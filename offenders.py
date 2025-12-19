@@ -507,7 +507,7 @@ class CommandOutputModal(ModalScreen[None]):
             out_text = out_text[:200_000] + "\n\n(output truncated)\n"
 
         self._output_text = out_text
-        self.call_from_thread(self._render_output, out_text)
+        self.app.call_from_thread(self._render_output, out_text)
 
     def _render_output(self, text: str) -> None:
         out = self.query_one("#cmd-out", RichLog)
