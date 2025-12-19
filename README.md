@@ -54,61 +54,89 @@ GEO_ASN_DB     = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
 
 If the files are missing, the UI still runs, but the country/ASN fields will show fallback values like **"Unknown"** / **"No ASN"**.
 
-### Included updater script (DB-IP Lite)
+### Included updater script (DB-IP Lite) — Python
 
 This repo includes a helper script to download and refresh the free **DB-IP Lite** databases monthly and maintain stable symlinks:
 
-- `scripts/update-geoip-dbip.sh`
+- `update_geoip_db.py` (Python)
 
 What it does:
 
 - downloads the monthly `.mmdb.gz` files (Country + ASN) from DB-IP
 - decompresses them
-- moves them into `/usr/share/GeoIP`
-- updates these symlinks so the Python app can always read consistent paths:
+- installs them into `/usr/share/GeoIP`
+- updates these symlinks so the app can always read consistent paths:
   - `/usr/share/GeoIP/dbip-country-lite.mmdb`
   - `/usr/share/GeoIP/dbip-asn-lite.mmdb`
+- prunes old MMDB files by default, keeping **only the latest 2** per type (current + previous rollback)
 
-**Prereqs:** `wget`, `gunzip`, `sudo` privileges to write into `/usr/share/GeoIP`.
+**Prereqs:**
+
+- Python **3.x** (tested with system Python on Ubuntu; e.g. 3.12)
+- root privileges to write into `/usr/share/GeoIP`
 
 #### Install / run manually
 
+Copy it somewhere in PATH (optional but convenient):
+
 ```bash
-chmod +x scripts/update-geoip-dbip.sh
-./scripts/update-geoip-dbip.sh
+sudo cp update_geoip_db.py /usr/local/bin/update_geoip_db.py
+sudo chmod +x /usr/local/bin/update_geoip_db.py
+```
+
+Run it:
+
+```bash
+sudo /usr/bin/python3 /usr/local/bin/update_geoip_db.py
 ```
 
 Sanity check:
 
 ```bash
-ls -lh /usr/share/GeoIP/dbip-*.mmdb
+ls -lh /usr/share/GeoIP/dbip-*-lite*.mmdb
 readlink -f /usr/share/GeoIP/dbip-country-lite.mmdb
 readlink -f /usr/share/GeoIP/dbip-asn-lite.mmdb
 ```
 
-#### Run monthly via cron
+#### Run monthly via cron (recommended: log to journald with a stable tag)
 
-Example cron entry (runs on the 1st day of each month at 03:10):
+Instead of writing log files and dealing with logrotate, you can pipe output into `logger` and filter by tag via `journalctl`.
 
-```cron
-10 3 1 * * /path/to/repo/scripts/update-geoip-dbip.sh >/dev/null 2>&1
+Edit root’s crontab:
+
+```bash
+sudo crontab -e
 ```
 
-If you prefer `@monthly`, that works too:
+Add:
 
 ```cron
-@monthly /path/to/repo/scripts/update-geoip-dbip.sh >/dev/null 2>&1
+@monthly /usr/bin/python3 /usr/local/bin/update_geoip_db.py 2>&1 | /usr/bin/logger -t dbip-geoip-updater
+```
+
+View logs:
+
+```bash
+journalctl -t dbip-geoip-updater --since "90 days ago"
+```
+
+#### Pruning behavior
+
+By default, the updater keeps **the latest 2** MMDB files per type (Country/ASN) and deletes older ones. This keeps a “previous month” rollback without accumulating files.
+
+To disable pruning:
+
+```bash
+sudo /usr/bin/python3 /usr/local/bin/update_geoip_db.py --no-prune
+```
+
+To keep more history (e.g. last 6):
+
+```bash
+sudo /usr/bin/python3 /usr/local/bin/update_geoip_db.py --keep-last 6
 ```
 
 DB-IP Lite downloads page: <https://db-ip.com/db/lite.php>
-
-## Running
-
-```bash
-python offenders.py
-```
-
-(Replace `offenders.py` with your actual script filename.)
 
 ### Avoid sudo password prompts
 
