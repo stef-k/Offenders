@@ -6,6 +6,7 @@ A **Textual**-based terminal UI (TUI) that reads Fail2Ban logs and shows:
 - **Current active jails**
 - **Active bans per jail**
 - **Last bans** from the selected log period
+- **WHOIS / RDNS** for the currently selected IP (via system tools)
 
 Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 
@@ -39,6 +40,21 @@ Optional:
 
 ```bash
 pip install geoip2
+```
+
+## System tools (optional but recommended)
+
+These are used for enrichment and convenience actions:
+
+- `mmdblookup` (optional) — used when `geoip2` isn't installed
+- `whois` (optional) — enables the **WHOIS** popup (`w`)
+- `dig` (optional) — enables better **RDNS** output (`d`), otherwise the app falls back to `getent hosts`
+
+On Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y mmdb-bin whois dnsutils
 ```
 
 ## GeoIP / ASN database files (required for enrichment)
@@ -153,6 +169,34 @@ Adjust the username and path to `fail2ban-client` as needed:
 ```bash
 which fail2ban-client
 ```
+
+## Run
+
+```bash
+python3 offenders.py
+```
+
+## Key bindings
+
+Global:
+
+- `q` — quit
+- `r` — refresh now
+- `t` — toggle table cursor mode (row/cell)
+- `c` or `x` — copy selection
+  - in **row** mode: copies the entire row (tab-separated)
+  - in **cell** mode: copies the current cell
+
+Network tools (on selected IP):
+
+- `w` — WHOIS (requires `whois`)
+- `d` — reverse DNS
+  - uses `dig -x` if available, otherwise falls back to `getent hosts`
+
+Modal popup (WHOIS/RDNS output):
+
+- `esc` or `q` — close
+- `c` — copy output (prints to stdout if clipboard isn't available)
 
 ## Configuration
 
