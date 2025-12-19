@@ -15,6 +15,9 @@ Cron-friendly:
 - Optional file logging (--log-file) and syslog (--syslog)
 - Optional lock file to avoid overlapping runs (--lock-file)
 - Optional pruning: keep last N MMDB files per type (default keep last 2)
+- add to root crontab for automatic monthly updates, with
+    e.g.: 220 3 3 * * /usr/bin/python3 /usr/local/bin/update_geoip_db.py 2>&1 | /usr/bin/logger -t dbip-geoip-updater
+    Then view it with: journalctl -t dbip-geoip-updater --since "90 days ago"
 """
 
 from __future__ import annotations
