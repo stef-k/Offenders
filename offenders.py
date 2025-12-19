@@ -265,18 +265,19 @@ def _mmdblookup_asn(ip: str) -> Tuple[str, str]:
 
         for i, line in enumerate(out):
             if "autonomous_system_number" in line and i + 1 < len(out):
-                cand = out[i + 1].strip().strip('"').strip(",")
-                if cand.isdigit():
-                    asn = cand
+                value_line = out[i + 1].strip()
+                m = re.search(r"(\d+)", value_line)
+                if m:
+                    asn = m.group(1)
                 break
 
         for i, line in enumerate(out):
             if "autonomous_system_organization" in line and i + 1 < len(out):
-                cand = out[i + 1].strip()
-                cand = cand.lstrip().lstrip('"')
-                cand = re.sub(r'".*$', "", cand)
-                if cand:
-                    org = cand
+                value_line = out[i + 1].strip()
+                value_line = value_line.lstrip().lstrip('"')
+                value_line = re.sub(r'".*$', "", value_line)
+                if value_line:
+                    org = value_line
                 break
 
         return asn, org
