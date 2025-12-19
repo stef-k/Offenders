@@ -471,7 +471,7 @@ class CommandOutputModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Static(self._title, id="cmd-title")
-        yield RichLog(id="cmd-out", wrap=True, highlight=False)
+        yield RichLog(id="cmd-out", wrap=True, highlight=True)
 
     def on_mount(self) -> None:
         out = self.query_one("#cmd-out", RichLog)
