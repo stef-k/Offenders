@@ -15,7 +15,8 @@ from typing import Iterable, List, Optional, Tuple
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
 # =========================
 # Config
@@ -454,6 +455,75 @@ class SummaryBar(Static):
         )
 
 
+class CommandOutputModal(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "dismiss", "Close"),
+        ("q", "dismiss", "Close"),
+        ("c", "copy_output", "Copy output"),
+    ]
+
+    def __init__(self, title: str, cmd: List[str]) -> None:
+        super().__init__()
+        self._title = title
+        self._cmd = cmd
+        self._output_text = ""
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._title, id="cmd-title")
+        yield RichLog(id="cmd-out", wrap=True, highlight=False)
+
+    def on_mount(self) -> None:
+        out = self.query_one("#cmd-out", RichLog)
+        out.write(f"$ {' '.join(self._cmd)}")
+        out.write("")
+        self._run()
+
+    @work(thread=True)
+    def _run(self) -> None:
+        out_text = ""
+        try:
+            p = subprocess.run(
+                self._cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=8,
+            )
+            out_text = (p.stdout or "") + (p.stderr or "")
+            if not out_text.strip():
+                out_text = "(no output)"
+        except FileNotFoundError:
+            out_text = (
+                "Command not found. Install the required package (whois / dnsutils)."
+            )
+        except subprocess.TimeoutExpired:
+            out_text = "Command timed out."
+        except Exception as ex:
+            out_text = f"Command failed: {ex}"
+
+        # Cap output so the UI stays responsive
+        if len(out_text) > 200_000:
+            out_text = out_text[:200_000] + "\n\n(output truncated)\n"
+
+        self._output_text = out_text
+        self.call_from_thread(self._render_output, out_text)
+
+    def _render_output(self, text: str) -> None:
+        out = self.query_one("#cmd-out", RichLog)
+        for line in text.splitlines():
+            out.write(line)
+
+    def action_copy_output(self) -> None:
+        if not self._output_text:
+            return
+        try:
+            self.app.copy_to_clipboard(self._output_text)  # type: ignore[attr-defined]
+            self.app.notify("Copied output", timeout=1.0)  # type: ignore[attr-defined]
+        except Exception:
+            print(self._output_text)
+            self.app.notify("Clipboard unavailable (printed to stdout)", timeout=2.0)  # type: ignore[attr-defined]
+
+
 class OffendersApp(App):
     CSS = """
     Screen { layout: vertical; }
@@ -479,6 +549,8 @@ class OffendersApp(App):
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
         ("t", "toggle_cursor", "Row/Cell"),
+        ("w", "whois", "Whois"),
+        ("d", "rdns", "RDNS"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -544,6 +616,67 @@ class OffendersApp(App):
         except Exception:
             print(text)
             self.notify("Clipboard unavailable (printed to stdout)", timeout=2.0)
+
+    def _selected_ip(self) -> Optional[str]:
+        table = self.focused
+        if not isinstance(table, DataTable):
+            return None
+
+        idx = self._cursor_indexes(table)
+        if idx is None:
+            return None
+        row_index, _ = idx
+
+        ip_col = None
+        if table.id == "offenders":
+            ip_col = 1  # Bans, IP, Country, ASN, Org
+        elif table.id == "last-bans":
+            ip_col = 3  # Date, Time, Jail, IP
+        else:
+            return None
+
+        val = self._cell_value_at(table, row_index, ip_col)
+        if val is None:
+            return None
+
+        ip = str(val).strip()
+        try:
+            ipaddress.ip_address(ip)
+            return ip
+        except ValueError:
+            return None
+
+    def action_whois(self) -> None:
+        ip = self._selected_ip()
+        if not ip:
+            self.notify(
+                "Select an IP in the Top banned IPs or Last bans tables", timeout=2.0
+            )
+            return
+
+        if shutil.which("whois") is None:
+            self.notify("Missing 'whois' command (install package: whois)", timeout=3.0)
+            return
+
+        self.push_screen(CommandOutputModal(f"WHOIS {ip}", ["whois", ip]))
+
+    def action_rdns(self) -> None:
+        ip = self._selected_ip()
+        if not ip:
+            self.notify(
+                "Select an IP in the Top banned IPs or Last bans tables", timeout=2.0
+            )
+            return
+
+        if shutil.which("dig") is not None:
+            cmd = ["dig", "+short", "-x", ip]
+            title = f"RDNS (dig -x) {ip}"
+        else:
+            # Fallback that works on most Linux systems without dnsutils
+            cmd = ["getent", "hosts", ip]
+            title = f"RDNS (getent hosts) {ip}"
+
+        self.push_screen(CommandOutputModal(title, cmd))
 
     # ---- Copy helpers (robust across Textual versions) ----
 
