@@ -14,6 +14,7 @@ Cron-friendly:
 - Uses logging with timestamps (stderr by default)
 - Optional file logging (--log-file) and syslog (--syslog)
 - Optional lock file to avoid overlapping runs (--lock-file)
+- Optional pruning: keep last N MMDB files per type (default keep last 2)
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import datetime as dt
 import gzip
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -32,6 +34,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 BASE_URL = "https://download.db-ip.com/free"
+
+MMDB_RE = re.compile(r"^(dbip-(country|asn)-lite)-(\d{4}-\d{2})\.mmdb$")
 
 
 @dataclass(frozen=True)
@@ -87,7 +91,6 @@ def month_prev(month_yyyy_mm: str) -> str:
 
 
 def require_writable_target(target_dir: Path, logger: logging.Logger) -> None:
-    # If directory doesn't exist, parent must be writable
     if target_dir.exists():
         if os.access(target_dir, os.W_OK):
             return
@@ -145,10 +148,6 @@ def gunzip_to(src_gz: Path, dest: Path) -> int:
 
 
 def atomic_replace(src: Path, dest: Path) -> None:
-    """
-    Atomically replace dest with src (same filesystem required).
-    We stage into dest.parent then os.replace.
-    """
     ensure_dir(dest.parent)
     tmp_dest = dest.with_name(dest.name + ".tmp")
     if tmp_dest.exists():
@@ -158,10 +157,6 @@ def atomic_replace(src: Path, dest: Path) -> None:
 
 
 def atomic_symlink(target_name: str, link_path: Path) -> None:
-    """
-    Atomically replace a symlink by creating link_path.tmp then os.replace.
-    Uses a relative symlink (target_name only).
-    """
     tmp_link = link_path.with_name(link_path.name + ".tmp")
     try:
         if tmp_link.exists() or tmp_link.is_symlink():
@@ -169,7 +164,6 @@ def atomic_symlink(target_name: str, link_path: Path) -> None:
         tmp_link.symlink_to(target_name)
         os.replace(tmp_link, link_path)
     finally:
-        # If replace failed, tmp may still exist
         if tmp_link.exists() and tmp_link.is_symlink():
             try:
                 tmp_link.unlink()
@@ -178,10 +172,6 @@ def atomic_symlink(target_name: str, link_path: Path) -> None:
 
 
 def acquire_lock(lock_file: Path, logger: logging.Logger):
-    """
-    Best-effort lock (POSIX). If lock cannot be acquired, return None.
-    If fcntl isn't available (non-POSIX), we skip locking.
-    """
     try:
         import fcntl  # type: ignore
     except Exception:
@@ -238,13 +228,98 @@ def pick_plan(
         logger.info("Current month files not available yet; falling back to %s", prev)
         return Plan.for_month(prev)
     except Exception as ex:
-        # If HEAD is blocked/fails, try primary downloads anyway.
         logger.debug("HEAD check failed (%s). Proceeding with primary month.", ex)
         return primary
 
 
+def resolve_symlink_target_name(link_path: Path) -> str | None:
+    try:
+        if not link_path.is_symlink():
+            return None
+        return os.readlink(link_path)  # returns the stored link (often relative)
+    except OSError:
+        return None
+
+
+def prune_old_mmdbs(target_dir: Path, keep_last: int, logger: logging.Logger) -> None:
+    """
+    Keep only the latest N MMDB files per type (country/asn), based on YYYY-MM in filename.
+    Never deletes symlinks. Also protects current symlink targets from deletion.
+    """
+    if keep_last <= 0:
+        return
+
+    country_link = target_dir / "dbip-country-lite.mmdb"
+    asn_link = target_dir / "dbip-asn-lite.mmdb"
+
+    protected_names = set()
+    c_t = resolve_symlink_target_name(country_link)
+    a_t = resolve_symlink_target_name(asn_link)
+    if c_t:
+        protected_names.add(Path(c_t).name)
+    if a_t:
+        protected_names.add(Path(a_t).name)
+
+    files = []
+    for p in target_dir.glob("dbip-*-lite-????-??.mmdb"):
+        if p.is_symlink():
+            continue
+        m = MMDB_RE.match(p.name)
+        if not m:
+            continue
+        prefix = m.group(1)  # dbip-country-lite or dbip-asn-lite
+        month = m.group(3)  # YYYY-MM
+        files.append((prefix, month, p))
+
+    if not files:
+        return
+
+    deleted_count = 0
+    freed_bytes = 0
+
+    for prefix in ("dbip-country-lite", "dbip-asn-lite"):
+        candidates = [(month, p) for (pr, month, p) in files if pr == prefix]
+        if len(candidates) <= keep_last:
+            continue
+
+        candidates.sort(key=lambda t: t[0])  # YYYY-MM sorts lexicographically correctly
+        to_keep = set(p.name for (_, p) in candidates[-keep_last:])
+
+        for month, p in candidates[:-keep_last]:
+            if p.name in to_keep:
+                continue
+            if p.name in protected_names:
+                logger.info(
+                    "Prune: skipping protected file (symlink target): %s", p.name
+                )
+                continue
+            try:
+                size = p.stat().st_size
+                p.unlink()
+                deleted_count += 1
+                freed_bytes += size
+                logger.info("Prune: deleted %s (%s)", p.name, human_bytes(size))
+            except OSError as ex:
+                logger.warning("Prune: failed deleting %s: %s", p, ex)
+
+    if deleted_count > 0:
+        logger.info(
+            "Prune complete: deleted %d file(s), freed %s",
+            deleted_count,
+            human_bytes(freed_bytes),
+        )
+    else:
+        logger.info("Prune complete: nothing to delete (keep_last=%d)", keep_last)
+
+
 def run(
-    plan: Plan, target_dir: Path, timeout: int, keep_tmp: bool, logger: logging.Logger
+    plan: Plan,
+    target_dir: Path,
+    timeout: int,
+    keep_tmp: bool,
+    keep_last: int,
+    no_prune: bool,
+    logger: logging.Logger,
 ) -> int:
     logger.info("Starting DB-IP GeoIP update for month %s", plan.month)
 
@@ -277,7 +352,6 @@ def run(
             logger.error("Network error while downloading: %s", ex)
             return 3
 
-        # Basic sanity
         if country_gz_path.stat().st_size < 1024:
             logger.error(
                 "Download looks too small: %s (%d bytes)",
@@ -310,7 +384,6 @@ def run(
             logger.error("Decompression failed: %s", ex)
             return 5
 
-        # MMDBs are usually multiple MB
         if country_mmdb_tmp.stat().st_size < 1024 * 1024:
             logger.error(
                 "Country MMDB looks unusually small: %s",
@@ -338,7 +411,6 @@ def run(
             logger.error("Install failed: %s", ex)
             return 7
 
-        # Update "latest" symlinks
         country_link = target_dir / "dbip-country-lite.mmdb"
         asn_link = target_dir / "dbip-asn-lite.mmdb"
 
@@ -363,6 +435,9 @@ def run(
             except OSError as ex:
                 logger.warning("Failed keeping debug copies: %s", ex)
 
+    if not no_prune:
+        prune_old_mmdbs(target_dir, keep_last=keep_last, logger=logger)
+
     logger.info("DB-IP databases updated successfully.")
     return 0
 
@@ -375,7 +450,6 @@ def setup_logging(
 
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
-    # Default handler: stderr (cron will capture if you redirect)
     sh = logging.StreamHandler(stream=sys.stderr)
     sh.setLevel(logging.DEBUG if verbose else logging.INFO)
     sh.setFormatter(fmt)
@@ -391,7 +465,6 @@ def setup_logging(
         try:
             from logging.handlers import SysLogHandler
 
-            # Common on Ubuntu: /dev/log
             syslog_paths = ["/dev/log", "/var/run/syslog"]
             handler = None
             for p in syslog_paths:
@@ -399,7 +472,6 @@ def setup_logging(
                     handler = SysLogHandler(address=p)
                     break
             if handler is None:
-                # UDP fallback
                 handler = SysLogHandler(address=("localhost", 514))
 
             handler.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -453,6 +525,17 @@ def parse_args() -> argparse.Namespace:
         help="Lock file to prevent overlapping runs (default: /var/lock/dbip-geoip-update.lock)",
     )
     p.add_argument("--no-lock", action="store_true", help="Disable locking")
+
+    # Pruning: keep current + previous by default (keep last 2 existing months per type).
+    p.add_argument(
+        "--keep-last",
+        type=int,
+        default=2,
+        help="Prune old MMDB files, keeping only the latest N per type (default: 2 = current + previous)",
+    )
+    p.add_argument(
+        "--no-prune", action="store_true", help="Disable pruning of old MMDB files"
+    )
     return p.parse_args()
 
 
@@ -464,7 +547,6 @@ def main() -> int:
     if not args.no_lock:
         lock_fd = acquire_lock(Path(args.lock_file), logger)
         if lock_fd is None:
-            # Another instance running
             return 0
 
     try:
@@ -482,6 +564,8 @@ def main() -> int:
             target_dir=target_dir,
             timeout=args.timeout,
             keep_tmp=args.keep_tmp,
+            keep_last=max(1, args.keep_last),
+            no_prune=args.no_prune,
             logger=logger,
         )
     except PermissionError:
