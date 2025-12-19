@@ -7,6 +7,7 @@ import gzip
 import ipaddress
 import os
 import re
+import shutil
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
