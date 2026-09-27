@@ -261,12 +261,12 @@ MIT — see [LICENSE](LICENSE).
 
 ## Development tests
 
-The application has four concrete modules with one-way imports:
-`offenders.py` owns the dashboard and entrypoints, `offenders_report.py` reads
-logs and derives enriched reports, and `offenders_fail2ban.py` owns the bounded
-command runner and structured status parsing. The dashboard imports reports;
-reports import Fail2Ban status and `offenders_geoip.py` for enrichment.
-Source execution requires all four files together.
+The application uses concrete modules with one-way imports:
+`offenders.py` owns the dashboard and entrypoints, `offenders_report.py` selects
+history and derives enriched reports, `offenders_events.py` acquires normalized
+log events, and `offenders_fail2ban.py` owns bounded commands and status parsing.
+The report imports events, Fail2Ban status, and `offenders_geoip.py` for enrichment.
+Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
 LOC is the hard gate and files above 400 counted LOC require cohesion review.
