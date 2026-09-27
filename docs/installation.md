@@ -111,5 +111,5 @@ offenders
 `pipx install .` provides local application isolation. With the source environment
 active, `python offenders.py` or `./offenders.py` also launches the dashboard.
 Keep the packaged modules together: copying only the old single script is not a
-current installation method. See [development tests](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md#development-tests) for
+current installation method. See [development tests](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md#tests-and-evidence) for
 contributor guidance and [release preparation](https://github.com/stef-k/Offenders/blob/master/RELEASING.md) for local wheel checks.
