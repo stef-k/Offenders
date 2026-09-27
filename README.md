@@ -351,6 +351,11 @@ deterministic jail counts and the newest ten events. `offenders_ip_ui.py` owns
 inspector rendering, asynchronous projection with stale-result protection, and
 bounded WHOIS/RDNS output. Jail and IP screens use explicit callbacks for pushed
 navigation without importing the app or each other.
+`offenders_host.py` exposes an explicit read-only host exposure snapshot, separate
+from ordinary report refresh. Local non-sudo `ss` supplies canonical endpoints;
+optional process-owner and batch systemd evidence may be partial or unavailable.
+Non-loopback bindings do not establish public Internet exposure. The snapshot
+provides facts only, without coverage recommendations or log analysis.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
