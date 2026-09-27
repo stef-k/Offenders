@@ -24,7 +24,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         with patch("textual.app.App.run") as run, patch("sys.argv", ["offenders.py"]), \
              self.assertRaises(SystemExit) as exit_status:
             runpy.run_path(str(Path(offenders.__file__)), run_name="__main__")
-            run.assert_called_once_with()
+        run.assert_called_once_with()
         self.assertEqual(exit_status.exception.code, 0)
 
     async def test_startup_report_and_keyboard_navigation(self):
