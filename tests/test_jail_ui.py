@@ -120,3 +120,23 @@ class JailDetailTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.press("enter")
                 self.assertIs(app.screen, app.default_screen)
                 self.assertEqual(build.call_count, 6)
+
+    async def test_back_reselects_jail_that_reappeared(self):
+        """A temporary absence must not turn a fallback row into the viewed jail."""
+        ssh = JailStatus("sshd", 0, 0, 0, 0, ())
+        web = replace(ssh, name="web", currently_banned=2)
+        with patch("offenders.build_report", return_value=snapshot(ssh, web)) as build, \
+             patch("offenders_geoip_ui.read_state", return_value={}):
+            app = OffendersApp()
+            async with app.run_test() as pilot:
+                await app.workers.wait_for_complete()
+                table = app.query_one("#bans-per-jail", DataTable)
+                table.focus()
+                await pilot.press("down", "enter")
+                for statuses in [(web,), (ssh, web)]:
+                    build.return_value = snapshot(*statuses)
+                    await pilot.press("r")
+                    await app.workers.wait_for_complete()
+                await pilot.press("escape")
+                self.assertIs(app.focused, table)
+                self.assertEqual(table.get_row_at(table.cursor_row)[0], "sshd")

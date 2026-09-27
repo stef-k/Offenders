@@ -199,11 +199,17 @@ class OffendersApp(App):
         jail = key.value
         if self._last_report is None or jail not in self._last_report.jail_list:
             return
-        self.push_screen(JailDetailScreen(jail, self._last_report), self._restore_jail_focus)
+        self.push_screen(
+            JailDetailScreen(jail, self._last_report),
+            lambda result: self._restore_jail_focus(jail),
+        )
 
-    def _restore_jail_focus(self, _result: None) -> None:
-        """The dashboard rebuild already preserves the selected jail by key."""
-        self.query_one("#bans-per-jail", DataTable).focus()
+    def _restore_jail_focus(self, jail: str) -> None:
+        """Reselect the viewed jail if active, including after disappearance/reappearance."""
+        table = self.query_one("#bans-per-jail", DataTable)
+        if jail in table.rows:
+            table.move_cursor(row=table.get_row_index(jail))
+        table.focus()
 
     def action_geoip(self) -> None:
         """Open focused GeoIP health and lifecycle actions."""
