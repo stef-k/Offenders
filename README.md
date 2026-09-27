@@ -239,6 +239,21 @@ Global:
   - in **row** mode: copies the entire row (tab-separated)
   - in **cell** mode: copies the current cell
 
+Dashboard filter:
+
+- `f` focuses the single-line Filter; typing immediately narrows **Top banned IPs**
+  and **Last bans** using a trimmed, case-insensitive literal substring.
+- Search loaded IP, jail, Country, ASN (including `AS123`), and organization fields.
+  Last bans reuse enrichment only for IPs already in Top banned IPs and remain
+  limited to the loaded last ten events. Counts and row ordering are unchanged.
+- `Enter` keeps the query and returns to the table; `Esc` clears it and returns.
+  Deleting the text also restores all loaded rows. No matches is a safe empty state.
+- The visible query survives successful refreshes and period changes; failures
+  retain the last successful filtered rows. It is not saved between runs.
+- Filtering performs no I/O or report rebuilds, even during collection. Live jail
+  status and investigation screens retain their unfiltered full-period context.
+  `f` is dashboard-only.
+
 Jail detail:
 
 - Focus **Active bans per jail**, move to a jail row, and press `Enter` to open it.

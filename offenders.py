@@ -8,13 +8,14 @@ import sys
 import threading
 from typing import Optional, Tuple
 
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.worker import Worker, get_current_worker
 from rich.text import Text
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
+from offenders_filter import filter_rows
 from offenders_jail_ui import JailDetailScreen
 from offenders_ip_ui import CommandOutputModal, IPInspectorScreen
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
@@ -23,6 +24,18 @@ from offenders_report import DEFAULT_PERIOD, PERIODS, Report, build_report
 
 # Do not set lower than 30 seconds as geoip/asn lookups may be slow
 CHECK_INTERVAL_SECONDS = 30
+
+
+class DashboardFilter(Input):
+    """Escape clears this transient query and returns to the dashboard table."""
+
+    def on_key(self, event: events.Key) -> None:
+        """Consume Escape locally so it cannot dismiss another screen."""
+        if event.key == "escape":
+            event.stop()
+            event.prevent_default()
+            self.value = ""
+            self.screen.query_one("#offenders", DataTable).focus()
 
 
 class SummaryBar(Static):
@@ -57,6 +70,7 @@ class OffendersApp(App):
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         ("p", "period", "Period"),
+        ("f", "filter", "Filter"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
@@ -81,6 +95,7 @@ class OffendersApp(App):
         with Container(id="body"):
             yield SummaryBar("Unavailable: awaiting first successful refresh", id="summary")
             yield self.geoip_status
+            yield DashboardFilter(placeholder="Filter IP, jail, Country, ASN, organization", id="filter")
 
             yield Static("🔥 Top banned IPs", classes="section-title")
             yield DataTable(id="offenders")
@@ -117,6 +132,7 @@ class OffendersApp(App):
         last_bans.show_vertical_scrollbar = True
         last_bans.show_horizontal_scrollbar = True
 
+        offenders.focus()
         self.refresh_report()
         self.set_interval(CHECK_INTERVAL_SECONDS, self.refresh_report)
 
@@ -168,6 +184,22 @@ class OffendersApp(App):
         if jail in table.rows:
             table.move_cursor(row=table.get_row_index(jail))
         table.focus()
+
+    def action_filter(self) -> None:
+        """Focus the query only when the dashboard is the active screen."""
+        if self.screen is self.default_screen:
+            self.query_one("#filter", Input).focus()
+
+    @on(Input.Changed, "#filter")
+    def filter_changed(self) -> None:
+        """Reproject the last successful snapshot without scheduling collection."""
+        if self._last_report is not None:
+            self._render_history(self._last_report)
+
+    @on(Input.Submitted, "#filter")
+    def filter_submitted(self) -> None:
+        """Keep the visible query active when returning to table navigation."""
+        self.query_one("#offenders", DataTable).focus()
 
     def action_geoip(self) -> None:
         """Open focused GeoIP health and lifecycle actions."""
@@ -394,6 +426,9 @@ class OffendersApp(App):
         if not isinstance(table, DataTable):
             return
 
+        if table.id in ("offenders", "last-bans") and self._selected_ip() is None:
+            return
+
         idx = self._cursor_indexes(table)
         if idx is None:
             return
@@ -448,18 +483,14 @@ class OffendersApp(App):
     def _apply_report(self, r: Report) -> None:
         """Replace all report widgets together in one UI callback after success."""
         summary = self.query_one("#summary", SummaryBar)
-        offenders = self.query_one("#offenders", DataTable)
         jails_line = self.query_one("#jails-line", Static)
         bans_per_jail = self.query_one("#bans-per-jail", DataTable)
-        last_bans = self.query_one("#last-bans", DataTable)
 
         selected_jail = (
             bans_per_jail.coordinate_to_cell_key(bans_per_jail.cursor_coordinate).row_key
             if bans_per_jail.row_count else None
         )
-        offenders.clear()
         bans_per_jail.clear()
-        last_bans.clear()
 
         self._last_report = r
         self._active_period = r.period
@@ -469,13 +500,7 @@ class OffendersApp(App):
         self.geoip_status.set_health(r.geoip_health)
         self.sub_title = f"Updated at: {r.generated_at:%Y-%m-%d %H:%M:%S}"
 
-        # Top offenders table
-        if r.top_offenders:
-            for o in r.top_offenders:
-                asn_display = f"AS{o.asn}" if o.asn.isdigit() else o.asn
-                offenders.add_row(str(o.count), o.ip, o.country, asn_display, o.asn_org, key=o.ip)
-        else:
-            offenders.add_row("0", "(none)", "", "", "")
+        self._render_history(r)
 
         # Active jails line
         jails_line.update(", ".join(r.jail_list) if r.jail_list else "(no jails found)")
@@ -493,15 +518,30 @@ class OffendersApp(App):
             if isinstance(screen, (JailDetailScreen, IPInspectorScreen)):
                 screen.update_report(r)
 
+    def _render_history(self, r: Report) -> None:
+        """Render both historical tables through one in-memory visibility path."""
+        rows = filter_rows(r, self.query_one("#filter", Input).value)
+        offenders = self.query_one("#offenders", DataTable)
+        last_bans = self.query_one("#last-bans", DataTable)
+        offenders.clear()
+        last_bans.clear()
+        # Top offenders table
+        if rows.top_offenders:
+            for o in rows.top_offenders:
+                asn_display = f"AS{o.asn}" if o.asn.isdigit() else o.asn
+                offenders.add_row(str(o.count), o.ip, o.country, asn_display, o.asn_org, key=o.ip)
+        else:
+            offenders.add_row("0", "(no filter matches)" if rows.query else "(none)", "", "", "")
+
         # Last bans table: render the normalized history without parsing raw text.
-        if r.last_10_bans:
-            for event in r.last_10_bans:
+        if rows.last_bans:
+            for event in rows.last_bans:
                 last_bans.add_row(
                     event.timestamp.strftime("%Y-%m-%d"),
                     event.timestamp.strftime("%H:%M:%S"), event.jail, event.ip,
                 )
         else:
-            last_bans.add_row("", "", "", "(no ban lines in selected period)")
+            last_bans.add_row("", "", "", "(no filter matches)" if rows.query else "(no ban lines in selected period)")
 
 
 def main(argv=None):
