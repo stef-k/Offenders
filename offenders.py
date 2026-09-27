@@ -17,6 +17,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
+from offenders_recommendations_ui import RecommendationsScreen
 from offenders_jail_ui import JailDetailScreen
 from offenders_ip_ui import CommandOutputModal, IPInspectorScreen
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
@@ -73,6 +74,7 @@ class OffendersApp(App):
         ("p", "period", "Period"),
         ("f", "filter", "Filter"),
         ("v", "view", "View"),
+        ("a", "coverage", "Coverage"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
@@ -187,6 +189,11 @@ class OffendersApp(App):
         if jail in table.rows:
             table.move_cursor(row=table.get_row_index(jail))
         table.focus()
+
+    def action_coverage(self) -> None:
+        """Open one manual analysis only from the active dashboard."""
+        if self.screen is self.default_screen:
+            self.push_screen(RecommendationsScreen())
 
     def action_view(self) -> None:
         """Keep summary cycling local to the dashboard screen."""
