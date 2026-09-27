@@ -210,3 +210,20 @@ Edit these constants in the script:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Development tests
+
+After installing `requirements.txt` in your virtual environment, run:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The suite uses Python's standard-library `unittest`, temporary log files, and
+local Fail2Ban status fixtures. Running it requires no daemon, root access,
+network access, or GeoIP databases. It covers ban recognition, IP normalization
+and local-address filtering, numeric gzip rotation ordering, inclusive calendar
+lookback boundaries (`0` includes all dates), and jail/table parsing.
+
+These tests characterize parsing only; they do not qualify the interactive UI,
+a live Fail2Ban installation, or runtime/dependency compatibility across versions.

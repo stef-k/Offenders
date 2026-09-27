@@ -1,0 +1,9 @@
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 7
+|  |- Total failed:     150
+|  `- File list:        /var/log/auth.log
+`- Actions
+   |- Currently banned: 2
+   |- Total banned:     42
+   `- Banned IP list:   8.8.8.8 2606:4700::1111
