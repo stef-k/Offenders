@@ -21,7 +21,7 @@ root; validation also uses temporary local sample files.
 Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban >=1.0.2**.
 The package supplies `textual>=8.2.8,<9` and `maxminddb>=3.1,<4`.
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
-be supplied separately; see [installation and permissions](docs/installation.md).
+be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 
 **First PyPI publication is pending.** The intended distribution name is
 `offenders`; registration and Trusted Publishing acceptance remain unproven.
@@ -43,9 +43,9 @@ offenders
 
 GeoIP enrichment is optional. Installation downloads no databases; an explicit
 update fetches DB-IP Lite, and automatic updates require opt-in. See the
-[GeoIP guide](docs/geoip.md) for lifecycle and attribution.
+[GeoIP guide](https://stef-k.github.io/Offenders/geoip.html) for lifecycle and attribution.
 Coverage analysis and validation are explicit, manual, and copy-only; a sample
-match never establishes filter safety. See [Coverage](docs/coverage.md).
+match never establishes filter safety. See [Coverage](https://stef-k.github.io/Offenders/coverage.html).
 
 ## Documentation
 
@@ -53,7 +53,7 @@ The repository documentation is available now. The
 [Pages documentation site](https://stef-k.github.io/Offenders/) is the intended
 published location; repository Pages setup and live-site qualification are pending.
 
-- [Documentation home](docs/README.md)
+- [Documentation home](https://stef-k.github.io/Offenders/)
 - [Installation, upgrades, permissions, and migration](https://stef-k.github.io/Offenders/installation.html)
 - [Usage and authoritative controls](https://stef-k.github.io/Offenders/usage.html)
 - [GeoIP and ASN enrichment](https://stef-k.github.io/Offenders/geoip.html)
@@ -62,5 +62,5 @@ published location; repository Pages setup and live-site qualification are pendi
 
 [Repository](https://github.com/stef-k/Offenders) ·
 [Releases](https://github.com/stef-k/Offenders/releases) ·
-[Developer appendix](DEVELOPMENT.md) · [Release preparation](RELEASING.md) ·
-[MIT license](LICENSE)
+[Developer appendix](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md) · [Release preparation](https://github.com/stef-k/Offenders/blob/master/RELEASING.md) ·
+[MIT license](https://github.com/stef-k/Offenders/blob/master/LICENSE)
