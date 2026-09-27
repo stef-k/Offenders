@@ -288,6 +288,11 @@ The application uses concrete modules with one-way imports:
 history and derives enriched reports, `offenders_events.py` acquires normalized
 log events, and `offenders_fail2ban.py` owns bounded commands and status parsing.
 The report imports events, Fail2Ban status, and `offenders_geoip.py` for enrichment.
+`offenders_ip.py` projects a selected IP from normalized `Report.events` and
+structured `JailStatus` address lists, keeping period history separate from current
+ban membership. It reuses top-offender enrichment or performs one on-demand local
+MMDB lookup; report-wide enrichment is unchanged. Its frozen snapshot includes
+deterministic jail counts and the newest ten events, ready for later consumers.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
