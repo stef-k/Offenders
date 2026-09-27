@@ -246,7 +246,9 @@ It does not require a running Fail2Ban daemon.
 ### Runtime qualification
 
 Fresh installation and the offline suite were validated on Ubuntu 24.04 with
-Python 3.12.3 and Textual 8.2.8. The jail status fields used by Offenders
+Python 3.12.3 and Textual 8.2.8, including the optional GeoIP extra. Both the
+installed command and executable source script rendered and exited successfully
+in a local pseudo-terminal without a live Fail2Ban daemon. The jail status fields used by Offenders
 (`Jail list` and `Currently banned`) match Fail2Ban 1.1.0 client formatting.
 Existing UI compatibility fallbacks remain because the parsing tests from #12
 do not protect those UI paths.
