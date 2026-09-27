@@ -362,8 +362,28 @@ metadata and direct readability only; missing, unreadable, unsupported, and
 unavailable candidates remain distinct. Loaded systemd units receive one bounded,
 non-sudo zero-line journal queryability probe, without reading history. Shared
 sources retain all family associations; unknown listeners stay unassociated.
-Fail2Ban configuration/logpath correlation belongs to #29, and content collection
-to #30. Source discovery has no UI, persistent cache, or report-refresh hook.
+Source discovery has no UI, persistent cache, or report-refresh hook.
+`offenders_coverage.py` consumes one supplied source snapshot, retaining the exact
+upstream evidence without reacquiring host/source state. Running jails come from
+`get_jail_list()`; concrete file/journal facts use Fail2Ban 1.0.2's read-only
+`get <jail> logpath` and `journalmatch`, through the same eight-second sudo boundary.
+Custom jail names are preserved; names alone never establish running coverage.
+Static jail configuration follows `jail.conf`, lexical `jail.d/*.conf`,
+`jail.local`, lexical `jail.d/*.local` precedence. Direct filter `.conf`/`.local`
+files establish definition existence and literal journal units. Reads use the
+current user, confined to `/etc/fail2ban`, with 256-file, 1-MiB-per-file and
+8-MiB-total bounds. Raw INI parsing does not reproduce general interpolation or
+include chains; unsupported, unreadable, or oversized evidence stays partial.
+Any unresolved jail include blocks static disabled candidates because its
+enabled, filter, or source overrides are unknown; concrete runtime coverage
+remains authoritative.
+Source-family targets distinguish `covered_enabled`, `available_disabled`,
+`no_obvious_match`, and `insufficient_evidence`. An exact stock-family catalog
+can establish disabled-definition relevance, explicitly without proving a
+concrete source relationship. These are facts, not recommendations. Generic
+listeners and observed services without sources remain insufficient evidence.
+Coverage is explicitly invoked and stays outside report/dashboard refresh,
+filtering, and navigation. Security-log content collection belongs to #30.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
