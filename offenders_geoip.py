@@ -1,7 +1,7 @@
 """Read-only DB-IP source selection, reusable readers, and bounded enrichment.
 
-Stable filenames in the XDG data directory take precedence independently over
-legacy system files. Refresh checks local generations; nothing downloads data.
+Managed generations (or existing flat XDG files) take precedence over legacy
+system files. Refresh checks local generations; nothing downloads data.
 """
 from __future__ import annotations
 
@@ -17,6 +17,32 @@ from typing import Literal
 GEO_COUNTRY_DB = "/usr/share/GeoIP/dbip-country-lite.mmdb"
 GEO_ASN_DB = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
 CACHE_SIZE = 2048  # Per database; includes healthy negative lookups.
+
+
+def resolve_data_root() -> Path:
+    """Resolve the shared root without creating it."""
+    return Path(os.environ.get("XDG_DATA_HOME") or
+                Path.home() / ".local/share") / "offenders/geoip"
+
+
+def validate_metadata(reader, kind: str | None = None):
+    """Share MMDB metadata checks; acquisition additionally requires role evidence."""
+    metadata = reader.metadata()
+    if metadata.ip_version not in (4, 6) or not metadata.database_type:
+        raise ValueError("Invalid MMDB metadata")
+    if kind and kind not in metadata.database_type.lower():
+        raise ValueError(f"MMDB metadata does not identify a {kind} database")
+
+
+def validate_database(path: Path, kind: str):
+    """Validate a staged database with the same Python reader used for lookups."""
+    import maxminddb
+    with maxminddb.open_database(str(path)) as reader:
+        validate_metadata(reader, kind)
+        # Traverse records to detect broken data sections before activation.
+        for _, record in reader:
+            if not isinstance(record, dict):
+                raise ValueError("Invalid MMDB record")
 
 
 @dataclass(frozen=True)
@@ -149,9 +175,7 @@ class _Database:
         reader = None
         try:
             reader = backend.open_database(health.resolved_path)
-            metadata = reader.metadata()
-            if metadata.ip_version not in (4, 6) or not metadata.database_type:
-                raise ValueError("Invalid MMDB metadata")
+            validate_metadata(reader)
             if select:
                 self.close()
                 self.reader, reader = reader, None
@@ -231,8 +255,8 @@ class GeoIP:
         if cache_size < 1:
             raise ValueError("cache_size must be positive")
         if data_root is None:
-            data_root = Path(os.environ.get("XDG_DATA_HOME") or
-                             Path.home() / ".local/share") / "offenders/geoip"
+            data_root = resolve_data_root()
+        self.data_root = data_root
         self._lock = RLock()
         self._databases = {
             kind: _Database(kind, (data_root / filename, legacy_root / filename), cache_size)
@@ -248,7 +272,15 @@ class GeoIP:
         except Exception as exc:
             backend, error = None, str(exc)[:240]
         with self._lock:
-            for database in self._databases.values():
+            # Resolve current once so an activation cannot mix candidate months.
+            current = self.data_root / "current"
+            try:
+                managed = current.resolve() if current.is_symlink() else self.data_root
+            except (OSError, RuntimeError):
+                # Let per-candidate inspection retain diagnostics and legacy fallback.
+                managed = current
+            for kind, database in self._databases.items():
+                database.paths = (managed / f"dbip-{kind}-lite.mmdb", database.paths[1])
                 database.refresh(backend, error)
             return self.health()
 
