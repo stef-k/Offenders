@@ -191,11 +191,34 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result.custom_bytes, len(text.encode()))
         self.assertTrue(all(not path.exists() for path in paths))
 
+    def test_stdout_tail_and_custom_failure_cleanup(self):
+        summary = 'Lines: 3 lines, 0 ignored, 0 matched, 3 missed'
+        for output, usable in ((summary + '\n' + 'x' * validation.OUTPUT_BYTES, False),
+                               ('x' * validation.OUTPUT_BYTES + '\n' + summary, True)):
+            result, _ = self.run_existing(inventory(), lambda *args, **kwargs: CommandResult(0, output, ''))
+            self.assertEqual(result.target.tested_lines is not None, usable)
+        inv = inventory(custom=True)
+        text = '[Definition]\nfailregex = ^failed <HOST>$'
+        for command in (CommandResult(0, 'malformed', ''),
+                        CommandResult(None, '', '', CommandFailure.TIMEOUT)):
+            paths = []
+
+            def run(args, **kwargs):
+                paths.extend((Path(args[-2]), Path(args[-1])))
+                return command
+
+            with patch.object(validation, 'run_host_command', side_effect=run):
+                result = validation.validate_custom(inv, inv.findings[0], text)
+            self.assertEqual(result.state, 'unavailable')
+            self.assertEqual(result.custom_sha256, hashlib.sha256(text.encode()).hexdigest())
+            self.assertTrue(all(not path.parent.exists() for path in paths))
+
     def test_complete_requires_unlimited_target_and_context(self):
         inv = inventory()
-        decision = replace(inv.findings[0], limitations=(),
-                           group=replace(inv.findings[0].group, limitations=()),
-                           disabled_candidates=(replace(inv.findings[0].disabled_candidates[0], limitations=()),))
-        inv = replace(inv, findings=(decision,))
         result, _ = self.run_existing(inv)
         self.assertEqual(result.state, 'complete')
+        self.assertTrue(result.limitations)  # Interpretation caveats remain visible.
+        patterns = inv.pattern_inventory
+        limited = replace(inv, pattern_inventory=replace(patterns,
+            evidence_snapshot=replace(patterns.evidence_snapshot, truncated=True)))
+        self.assertEqual(self.run_existing(limited)[0].state, 'partial')

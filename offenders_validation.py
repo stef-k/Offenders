@@ -12,11 +12,19 @@ import tempfile
 
 from offenders_fail2ban import CommandFailure, run_host_command
 from offenders_findings import FilterMatch, FindingDecision, FindingInventory
+from offenders_patterns import COUNT_NOTE
 
 # Independent budgets for each pass; stdout is capped after the runner captures it.
 SAMPLE_BYTES = 64 * 1024
 SAMPLE_RECORDS = 40
 OUTPUT_BYTES = 256 * 1024
+# These factual interpretation caveats do not describe missing/sample fidelity.
+# Unknown upstream limitations conservatively keep a successful result partial.
+INTERPRETATION_NOTES = frozenset((
+    COUNT_NOTE,
+    "disabled candidate requires concrete filter validation before suitability review",
+    "enabled-source monitoring does not prove every observed record matched the filter",
+))
 OPTIONS_FALLBACK = "effective jail filter options were not reproduced; base filter was validated"
 
 
@@ -184,6 +192,7 @@ def _sample(records):
 def _write(path: Path, data: bytes) -> None:
     """Create private files exclusively inside this operation's secure directory."""
     with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         stream.write(data)
 
 
@@ -236,17 +245,19 @@ def _execute(result, target_records, context_records, custom, config_root):
             argument = str(filter_path)
         result = replace(result, filter_argument=argument)
         target = _run_sample(directory, "target.log", target_data, target, argument, config_root)
-        if target.tested_lines is None:
-            return replace(result, target=target, limitations=_notes((*notes, "target validation unavailable")))
         if context_data:
             context = _run_sample(directory, "context.log", context_data, context, argument, config_root)
             if context.tested_lines is None:
                 notes.append("context validation unavailable")
         else:
-            context = None
+            context = context if context_records else None
             notes.append("no usable context sample; context match counts are unavailable")
+    if target.tested_lines is None:
+        return replace(result, target=target, context=context,
+                       limitations=_notes((*notes, "target validation unavailable")))
     return replace(result, target=target, context=context,
-                   state="partial" if notes else "complete", limitations=_notes(notes))
+                   state="partial" if any(note not in INTERPRETATION_NOTES for note in notes) else "complete",
+                   limitations=_notes(notes))
 
 
 def validate_existing(inventory: FindingInventory, decision: FindingDecision, target: FilterMatch,
@@ -257,16 +268,18 @@ def validate_existing(inventory: FindingInventory, decision: FindingDecision, ta
         if not any(row is target for row in eligible_targets(inventory, decision)):
             raise ValueError("existing target is not attached to the exact candidate decision")
         argument, reproduced, limits = _existing_argument(inventory, target)
+        result = replace(result, jail_name=target.name, filter_stem=target.filter_stem,
+                         filter_argument=argument, effective_options_reproduced=reproduced)
         records, context, notes = _records(inventory, decision)
         notes.extend((*limits, *target.limitations))
         if not reproduced:
             notes.append(OPTIONS_FALLBACK)
-        result = replace(result, jail_name=target.name, filter_stem=target.filter_stem,
-                         filter_argument=argument, effective_options_reproduced=reproduced,
-                         limitations=_notes(notes))
+        result = replace(result, limitations=_notes(notes))
         return _execute(result, records, context, None, config_root)
-    except (ValueError, OSError) as error:
+    except ValueError as error:
         return replace(result, limitations=_notes((*result.limitations, _clip(str(error)))))
+    except OSError:
+        return replace(result, limitations=_notes((*result.limitations, "temporary validation file operation failed")))
 
 
 def validate_custom(inventory: FindingInventory, decision: FindingDecision, text: str,
@@ -278,9 +291,11 @@ def validate_custom(inventory: FindingInventory, decision: FindingDecision, text
                 or not any(row is decision for row in inventory.findings)):
             raise ValueError("custom text requires the exact custom-gap candidate decision")
         custom = _custom_bytes(text)
+        result = replace(result, custom_sha256=hashlib.sha256(custom).hexdigest(), custom_bytes=len(custom))
         records, context, notes = _records(inventory, decision)
-        result = replace(result, custom_sha256=hashlib.sha256(custom).hexdigest(), custom_bytes=len(custom),
-                         limitations=_notes(notes))
+        result = replace(result, limitations=_notes(notes))
         return _execute(result, records, context, custom, config_root)
-    except (ValueError, OSError) as error:
+    except ValueError as error:
         return replace(result, limitations=_notes((*result.limitations, _clip(str(error)))))
+    except OSError:
+        return replace(result, limitations=_notes((*result.limitations, "temporary validation file operation failed")))
