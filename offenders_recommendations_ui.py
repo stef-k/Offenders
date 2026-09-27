@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.worker import get_current_worker
 from textual.widgets import DataTable, Footer, Static
 
+from offenders_validation_ui import ValidationScreen
 from offenders_host import discover_host_inventory
 from offenders_sources import discover_log_sources
 from offenders_coverage import discover_coverage
@@ -33,7 +34,7 @@ SUPPRESSION_LABELS = {
 CAVEATS = {
     "existing_disabled_candidate": (
         "Filter suitability is not yet established. This candidate is unvalidated; "
-        "validation belongs to the later validation workflow."),
+        "press v to inspect bounded validation evidence."),
     "enabled_tuning_question": (
         "This does not prove the jail failed or that a ban should already have happened. "
         "Pre-ban failures, multiple clients and ordinary jail timing/settings can explain "
@@ -127,7 +128,7 @@ def bounded_error(error: Exception) -> str:
 class RecommendationsScreen(Screen):
     """Own one manual worker and its immutable result until this screen closes."""
 
-    BINDINGS = [("escape", "close", "Close"), ("q", "close", "Close")]
+    BINDINGS = [("v", "validate", "Validate"), ("escape", "close", "Close"), ("q", "close", "Close")]
     DEFAULT_CSS = """
     RecommendationsScreen { layout: vertical; }
     #coverage-summary { height: auto; max-height: 12; }
@@ -199,6 +200,13 @@ class RecommendationsScreen(Screen):
         if key in self.decisions:
             self.query_one("#coverage-detail", Static).update(Text(finding_detail(self.decisions[key])))
             self.query_one("#coverage-scroll", VerticalScroll).scroll_home(animate=False)
+
+    def action_validate(self) -> None:
+        """Open explicit validation using this screen's exact retained finding."""
+        if self.inventory is None or not self.inventory.findings:
+            return
+        decision = self.inventory.findings[self.query_one(DataTable).cursor_row]
+        self.app.push_screen(ValidationScreen(self.inventory, decision))
 
     def action_close(self) -> None:
         """Stop result delivery immediately, before asynchronous removal finishes."""
