@@ -4,21 +4,19 @@ from __future__ import annotations
 
 import datetime as dt
 import ipaddress
-import shutil
-import subprocess
 import sys
 import threading
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.screen import ModalScreen
 from textual.worker import Worker, get_current_worker
 from rich.text import Text
-from textual.widgets import DataTable, Footer, Header, RichLog, Static
+from textual.widgets import DataTable, Footer, Header, Static
 
 from offenders_jail_ui import JailDetailScreen
+from offenders_ip_ui import CommandOutputModal, IPInspectorScreen
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
 from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
 from offenders_report import DEFAULT_PERIOD, PERIODS, Report, build_report
@@ -34,75 +32,6 @@ class SummaryBar(Static):
             f"🕒 {now:%Y-%m-%d %H:%M:%S} | 🔢 bans={r.total_bans} | period={r.period}"
             + f" | reports updating every {CHECK_INTERVAL_SECONDS} seconds"
         )
-
-
-class CommandOutputModal(ModalScreen[None]):
-    BINDINGS = [
-        ("escape", "dismiss", "Close"),
-        ("q", "dismiss", "Close"),
-        ("c", "copy_output", "Copy output"),
-    ]
-
-    def __init__(self, title: str, cmd: List[str]) -> None:
-        super().__init__()
-        self._title = title
-        self._cmd = cmd
-        self._output_text = ""
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._title, id="cmd-title")
-        yield RichLog(id="cmd-out", wrap=True, highlight=True)
-
-    def on_mount(self) -> None:
-        out = self.query_one("#cmd-out", RichLog)
-        out.write(f"$ {' '.join(self._cmd)}")
-        out.write("")
-        self._run()
-
-    @work(thread=True)
-    def _run(self) -> None:
-        out_text = ""
-        try:
-            p = subprocess.run(
-                self._cmd,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=8,
-            )
-            out_text = (p.stdout or "") + (p.stderr or "")
-            if not out_text.strip():
-                out_text = "(no output)"
-        except FileNotFoundError:
-            out_text = (
-                "Command not found. Install the required package (whois / dnsutils)."
-            )
-        except subprocess.TimeoutExpired:
-            out_text = "Command timed out."
-        except Exception as ex:
-            out_text = f"Command failed: {ex}"
-
-        # Cap output so the UI stays responsive
-        if len(out_text) > 200_000:
-            out_text = out_text[:200_000] + "\n\n(output truncated)\n"
-
-        self._output_text = out_text
-        self.app.call_from_thread(self._render_output, out_text)
-
-    def _render_output(self, text: str) -> None:
-        out = self.query_one("#cmd-out", RichLog)
-        for line in text.splitlines():
-            out.write(line)
-
-    def action_copy_output(self) -> None:
-        if not self._output_text:
-            return
-        try:
-            self.app.copy_to_clipboard(self._output_text)  # type: ignore[attr-defined]
-            self.app.notify("Copied output", timeout=1.0)  # type: ignore[attr-defined]
-        except Exception:
-            print(self._output_text)
-            self.app.notify("Clipboard unavailable (printed to stdout)", timeout=2.0)  # type: ignore[attr-defined]
 
 
 class OffendersApp(App):
@@ -200,9 +129,38 @@ class OffendersApp(App):
         if self._last_report is None or jail not in self._last_report.jail_list:
             return
         self.push_screen(
-            JailDetailScreen(jail, self._last_report),
+            JailDetailScreen(jail, self._last_report, self._push_ip),
             lambda result: self._restore_jail_focus(jail),
         )
+
+    def _push_jail(self, jail: str) -> None:
+        """Push nested jail detail without replacing the underlying inspector."""
+        if self._last_report is not None:
+            self.push_screen(JailDetailScreen(jail, self._last_report, self._push_ip))
+
+    def _push_ip(self, ip: str) -> None:
+        """Share report-only routing with jail history."""
+        if self._last_report is not None:
+            self.push_screen(IPInspectorScreen(ip, self._last_report, self._push_jail))
+
+    @on(DataTable.RowSelected, "#offenders, #last-bans")
+    @on(DataTable.CellSelected, "#offenders, #last-bans")
+    def open_ip(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
+        """Capture IP identity for both opening and dashboard return selection."""
+        ip = self._selected_ip()
+        if ip is None or self._last_report is None:
+            return
+        table = event.data_table
+        self.push_screen(IPInspectorScreen(ip, self._last_report, self._push_jail),
+                         lambda result: self._restore_ip_focus(table, ip))
+
+    def _restore_ip_focus(self, table: DataTable, ip: str) -> None:
+        """Find the original IP after reordering, or select a valid fallback row."""
+        column = 1 if table.id == "offenders" else 3
+        row = next((i for i in range(table.row_count)
+                    if str(table.get_row_at(i)[column]) == ip), 0)
+        table.move_cursor(row=row)
+        table.focus()
 
     def _restore_jail_focus(self, jail: str) -> None:
         """Reselect the viewed jail if active, including after disappearance/reappearance."""
@@ -319,42 +277,25 @@ class OffendersApp(App):
 
         ip = str(val).strip()
         try:
-            ipaddress.ip_address(ip)
-            return ip
+            return ipaddress.ip_address(ip).compressed
         except ValueError:
             return None
 
-    def action_whois(self) -> None:
+    def _open_ip_tool(self, tool: str) -> None:
+        """Route dashboard tools to the shared bounded command view."""
         ip = self._selected_ip()
-        if not ip:
-            self.notify(
-                "Select an IP in the Top banned IPs or Last bans tables", timeout=2.0
-            )
-            return
+        if ip:
+            self.push_screen(CommandOutputModal(ip, tool))
+        else:
+            self.notify("Select an IP in the Top banned IPs or Last bans tables", timeout=2.0)
 
-        if shutil.which("whois") is None:
-            self.notify("Missing 'whois' command (install package: whois)", timeout=3.0)
-            return
-
-        self.push_screen(CommandOutputModal(f"WHOIS {ip}", ["whois", ip]))
+    def action_whois(self) -> None:
+        """Preserve the dashboard WHOIS binding."""
+        self._open_ip_tool("whois")
 
     def action_rdns(self) -> None:
-        ip = self._selected_ip()
-        if not ip:
-            self.notify(
-                "Select an IP in the Top banned IPs or Last bans tables", timeout=2.0
-            )
-            return
-
-        if shutil.which("dig") is not None:
-            cmd = ["dig", "+short", "-x", ip]
-            title = f"RDNS (dig -x) {ip}"
-        else:
-            # Fallback that works on most Linux systems without dnsutils
-            cmd = ["getent", "hosts", ip]
-            title = f"RDNS (getent hosts) {ip}"
-
-        self.push_screen(CommandOutputModal(title, cmd))
+        """Preserve the dashboard reverse DNS binding."""
+        self._open_ip_tool("rdns")
 
     # ---- Copy helpers (robust across Textual versions) ----
 
@@ -532,7 +473,7 @@ class OffendersApp(App):
         if r.top_offenders:
             for o in r.top_offenders:
                 asn_display = f"AS{o.asn}" if o.asn.isdigit() else o.asn
-                offenders.add_row(str(o.count), o.ip, o.country, asn_display, o.asn_org)
+                offenders.add_row(str(o.count), o.ip, o.country, asn_display, o.asn_org, key=o.ip)
         else:
             offenders.add_row("0", "(none)", "", "", "")
 
@@ -549,7 +490,7 @@ class OffendersApp(App):
         if selected_jail in bans_per_jail.rows:
             bans_per_jail.move_cursor(row=bans_per_jail.get_row_index(selected_jail))
         for screen in self.screen_stack:
-            if isinstance(screen, JailDetailScreen):
+            if isinstance(screen, (JailDetailScreen, IPInspectorScreen)):
                 screen.update_report(r)
 
         # Last bans table: render the normalized history without parsing raw text.

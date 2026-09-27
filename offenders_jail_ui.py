@@ -1,6 +1,9 @@
 """Current jail detail rendered exclusively from successful dashboard reports."""
 
+from collections.abc import Callable
+
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
@@ -56,8 +59,9 @@ class JailDetailScreen(Screen[None]):
     # None means all events in the committed report period.
     HISTORY_LIMITS = (10, 50, 100, None)
 
-    def __init__(self, jail: str, report: Report) -> None:
+    def __init__(self, jail: str, report: Report, open_ip: Callable[[str], None]) -> None:
         super().__init__()
+        self.open_ip = open_ip
         self.jail = jail
         self.report = report
         self.history_level = 0
@@ -104,6 +108,14 @@ class JailDetailScreen(Screen[None]):
             )
         table.move_cursor(row=min(cursor.row, max(0, len(visible) - 1)), scroll=False)
         table.scroll_to(x=scroll_x, y=scroll_y, animate=False, force=True)
+
+    @on(DataTable.RowSelected, "#jail-history")
+    @on(DataTable.CellSelected, "#jail-history")
+    def select_ip(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
+        """Open the report's normalized address without changing history context."""
+        event.stop()
+        key = event.row_key if isinstance(event, DataTable.RowSelected) else event.cell_key.row_key
+        self.open_ip(str(event.data_table.get_row(key)[2]))
 
     def update_report(self, report: Report) -> None:
         """Refresh literal status in place without changing focus or scroll."""

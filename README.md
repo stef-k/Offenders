@@ -242,7 +242,7 @@ Global:
 Jail detail:
 
 - Focus **Active bans per jail**, move to a jail row, and press `Enter` to open it.
-- `Esc` or `q` — return to the jail table, preserving the jail selection when active.
+- `Esc` or `q` — return one screen, preserving the underlying navigation context.
 - `r` and `p` remain available in detail. Successful refreshes update the open jail;
   failed refreshes retain its last successful status, history, and live IP snapshot.
 - `e` — expand jail history from 10 to 50 to 100 to all-in-range events.
@@ -255,11 +255,33 @@ An active jail with no current IPs shows `(none)`; an inactive jail shows unavai
 Opening, navigating, or expanding detail reuses the latest successful report and
 performs no additional collection.
 
-Network tools (on selected IP):
+IP inspector:
+
+- `Enter` on a real **Top banned IPs**, **Last bans**, or **jail history** row
+  opens that normalized IP without collecting logs or querying Fail2Ban.
+- The snapshot shows period ban count, first/last seen, distinct jails, per-jail
+  counts, newest ten events, report timestamp, and independent Country/ASN states.
+  Current ban membership and current jails are separate from period history.
+  Healthy unmapped enrichment is distinct from unavailable enrichment.
+- `Enter` on the inspector jail table opens historical or current jail detail.
+  `Esc`/`q` backs out one screen to the same inspector or jail detail, retaining
+  history expansion and table context. Dashboard return reselects the IP if present.
+- Successful refreshes and global `p` period changes update the same selected IP
+  in place, including when it disappears from history/current bans. Failed refreshes
+  retain the last successful snapshot. Local projection runs off the UI thread.
+- `c`/`x` retain the focused table's row/cell copy behavior.
+
+Network tools (dashboard selected IP or inspector's fixed IP):
 
 - `w` — WHOIS (requires `whois`)
 - `d` — reverse DNS
-  - uses `dig -x` if available, otherwise falls back to `getent hosts`
+  - runs `dig +short -x`; falls back to `getent hosts` only for command-not-found,
+    never for timeout or non-zero exit
+
+Both tools are explicit on-demand actions, run without sudo off the UI thread,
+with an eight-second timeout per command and no retries. Output identifies the
+command, stdout/stderr and failure category; rendered/copied text is capped at
+approximately 200 KiB.
 
 Modal popup (WHOIS/RDNS output):
 
@@ -292,7 +314,10 @@ The report imports events, Fail2Ban status, and `offenders_geoip.py` for enrichm
 structured `JailStatus` address lists, keeping period history separate from current
 ban membership. It reuses top-offender enrichment or performs one on-demand local
 MMDB lookup; report-wide enrichment is unchanged. Its frozen snapshot includes
-deterministic jail counts and the newest ten events, ready for later consumers.
+deterministic jail counts and the newest ten events. `offenders_ip_ui.py` owns
+inspector rendering, asynchronous projection with stale-result protection, and
+bounded WHOIS/RDNS output. Jail and IP screens use explicit callbacks for pushed
+navigation without importing the app or each other.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
