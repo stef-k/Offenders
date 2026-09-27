@@ -354,10 +354,28 @@ three literal examples, and all decision limitations:
 **No recommendation** is normal. Suppression counts explain below-threshold,
 non-global-only, inactive, enabled-covered, and insufficient-evidence decisions.
 Zero-pattern results summarize analyzed, unsupported, and unavailable/skipped/
-partial source evidence. Partial evidence is explicitly labeled, never promoted
-into a recommendation. Local wall-clock and unknown timestamps cannot enforce
+partial source evidence. The UI never upgrades evidence beyond the #33 decision; partial positive
+evidence can underpin a candidate, with all partial/truncated limitations retained. Local wall-clock and unknown timestamps cannot enforce
 an exact UTC lookback. **Analysis unavailable** instead means the workflow failed.
-This screen provides no validation, configuration generation, or mutation controls.
+Press `v` on a finding to open filter validation. Select one existing jail/filter
+and explicitly press `v` or Enter to validate it. Merely opening or highlighting
+a target does not run validation. `Esc` / `q` closes the validation screen.
+Custom-gap findings have no generated filter to validate yet.
+
+Validation uses bounded local samples retained by the analysis and Fail2Ban's own
+installed `fail2ban-regex`. It does not reacquire logs, perform DNS lookups, use
+sudo, reload/enable jails, or write configuration. Target and same-source context
+samples each contain at most 40 logical records and 64 KiB of UTF-8 text.
+Displayed examples are limited to three per sample, 512 UTF-8 bytes each.
+Match/miss/ignored counts describe **tested lines**, which can differ from logical
+records for multiline text. Target matches show that the filter matched lines in
+this bounded target sample; misses and ignored lines are concrete review evidence.
+Context matches are not automatically false positives, and zero context matches
+do not establish low false-positive risk. Successful validation does not establish
+that a filter is safe or suitable for enabling. Samples may be partial; missing
+context counts are unavailable, never assumed zero.
+
+This screen provides no configuration generation or mutation controls.
 
 Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
 Log paths are configured in `offenders_report.py`; GeoIP paths are owned by
@@ -477,10 +495,41 @@ subset of those decisions, with no scores, UI, regex validation, or mutation.
 `offenders_recommendations_ui` owns only the manual workflow and presentation.
 Opening its screen runs host -> sources -> coverage -> evidence -> patterns ->
 findings in one background worker, sharing the exact source inventory between
-coverage and evidence. Policy remains in #33 (`offenders_findings`); validation
-remains future #35 work. There is no automatic or persistent analysis, report
+coverage and evidence. Policy remains in #33 (`offenders_findings`). There is no automatic or persistent analysis, report
 refresh hook, or second evidence cache. Closing cancels result delivery; bounded
 underlying reads may finish afterward.
+
+`offenders_validation` accepts only exact finding/target objects from the supplied
+inventory. It uses the retained group's record identities for the target and the
+canonical source/family analysis's alias keys for same-source context records.
+Missing target identities fail closed. Each operation owns a secure temporary
+directory and mode-0600 sample files, cleaned after success, failure, or timeout.
+The optional `config_root` argument is a test seam; production uses `/etc/fail2ban`.
+Safe literal `filter[options]` arguments and `%(__name__)s` substitution preserve
+known effective options. Complex/unresolved options fall back to the resolved
+base stem with an explicit partial limitation.
+
+Each non-empty target/context pass calls #14 `run_host_command` once with
+`fail2ban-regex --usedns=no --encoding=utf-8 --print-no-missed --print-no-ignored
+-c /etc/fail2ban -- <sample> <filter>`, `sudo=False`, and an eight-second timeout.
+There is no shell or retry. Only the stable Fail2Ban 1.0.2 summary
+`Lines: N lines, I ignored, M matched, X missed` is parsed: exactly one summary,
+nonnegative integers, and `I + M + X == N` are required. Zero matches are valid
+execution evidence. Parsing examines the newest 256 KiB of stdout and retains
+only counts and up to 300 UTF-8 bytes of error detail. This is a **post-run parse
+and retention cap**, not a streaming process-memory bound: #14 first captures
+the process output. Full stdout/stderr are not retained in validation results.
+
+The backend-only custom-text API is reserved for #36. It requires an exact custom
+gap candidate, valid UTF-8 text at most 64 KiB without NUL, a non-empty
+`[Definition]` / `failregex`, and only optional `[Init]`. Include chains, defaults,
+and filesystem-path inputs are rejected. Text is written to a private temporary
+`.conf`; its exact SHA-256 and byte count identify what was tested, without a
+trust score. No custom text is generated or edited by the current UI.
+`offenders_validation_ui` owns an explicit single-target worker and renders
+complete/partial/unavailable evidence separately from the unchanged #33 graph.
+Closing discards delivery while the backend completes bounded execution/cleanup.
+No production-host validation is claimed by the offline fixtures.
 
 Source execution requires the packaged `offenders*.py` modules together.
 
