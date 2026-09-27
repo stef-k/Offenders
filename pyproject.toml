@@ -10,7 +10,20 @@ description = "A Fail2Ban log and jail dashboard for the terminal"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["fail2ban", "terminal", "dashboard", "linux"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+]
 dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4"]
+
+# Public support and source locations; no maintainer-private contact details.
+[project.urls]
+Source = "https://github.com/stef-k/Offenders"
+Issues = "https://github.com/stef-k/Offenders/issues"
 
 [project.scripts]
 offenders = "offenders:main"
