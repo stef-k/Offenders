@@ -6,6 +6,8 @@ run on-demand WHOIS/RDNS lookups or a manual Coverage analysis for review.
 
 ![Offenders TUI screenshot](https://raw.githubusercontent.com/stef-k/Offenders/master/offenders-screenshot.jpg)
 
+Current dashboard with synthetic documentation addresses and no GeoIP databases.
+
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
 - Review Coverage evidence and explicitly validate copy-only filter candidates.

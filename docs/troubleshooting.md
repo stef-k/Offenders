@@ -9,7 +9,7 @@ title: Troubleshooting
 | Symptom | What to check |
 | --- | --- |
 | Fail2Ban command denied/unavailable, timeout, or parse failure | Read the degraded detail; verify Fail2Ban availability, actual client path, and narrowly scoped noninteractive sudo permission. Last-good data is retained; it is not current success. |
-| Missing or unreadable report history | Verify configured file paths and current-user read access, including rotations. Missing files are skipped, so no history does not prove there were no bans; unreadable files can fail collection. |
+| Missing or unreadable report history | Verify configured file paths and current-user read access, including rotations. At least the current log or its plain `.1` rotation must exist; gzip history alone is insufficient. Disappearing rotations are skipped; unreadable files can fail collection. Empty history does not prove there were no bans. |
 | GeoIP unavailable or reader failure | Inspect diagnostics/status for independent Country/ASN sources and reader errors; check the same user/XDG environment and file readability. Unmapped is a different state. |
 | GeoIP stale | Local age exceeds 62 days; readable data remains usable. Choose an explicit update if desired. |
 | GeoIP update failure | Read the latest outcome; usable active data is preserved. Check the reported network/storage/validation error before choosing another explicit attempt. |
