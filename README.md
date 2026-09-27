@@ -356,6 +356,14 @@ from ordinary report refresh. Local non-sudo `ss` supplies canonical endpoints;
 optional process-owner and batch systemd evidence may be partial or unavailable.
 Non-loopback bindings do not establish public Internet exposure. The snapshot
 provides facts only, without coverage recommendations or log analysis.
+`offenders_sources.py` consumes that supplied host snapshot explicitly and retains
+its service states and health. It checks fixed standard file candidates using
+metadata and direct readability only; missing, unreadable, unsupported, and
+unavailable candidates remain distinct. Loaded systemd units receive one bounded,
+non-sudo zero-line journal queryability probe, without reading history. Shared
+sources retain all family associations; unknown listeners stay unassociated.
+Fail2Ban configuration/logpath correlation belongs to #29, and content collection
+to #30. Source discovery has no UI, persistent cache, or report-refresh hook.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
