@@ -9,6 +9,8 @@ import tarfile
 import tomllib
 import zipfile
 
+from packaging.requirements import Requirement
+
 
 def normalized(name):
     """Compare distribution identities using Python's package-name rules."""
@@ -21,7 +23,9 @@ def check_metadata(raw, project, root):
     assert normalized(metadata["Name"]) == normalized(project["name"])
     assert metadata["Version"] == project["version"]
     assert metadata["Requires-Python"] == project["requires-python"]
-    assert set(metadata.get_all("Requires-Dist", [])) == set(project["dependencies"])
+    assert {Requirement(value) for value in metadata.get_all("Requires-Dist", [])} == {
+        Requirement(value) for value in project["dependencies"]
+    }
     assert metadata["License-Expression"] == project["license"]
     assert metadata.get_all("License-File") == ["LICENSE"]
     assert metadata["Description-Content-Type"] == "text/markdown"
@@ -47,7 +51,7 @@ def check_wheel(path, project, modules, root):
 
 
 def check_sdist(path, project, modules, root):
-    """Reject unrelated source payloads while retaining the offline test suite."""
+    """Reject unrelated source payloads; setuptools may include test source files."""
     with tarfile.open(path) as archive:
         files = {member.name.partition("/")[2]: member for member in archive.getmembers()
                  if not member.isdir()}
@@ -67,6 +71,8 @@ def check_sdist(path, project, modules, root):
 
 def main():
     """Fail closed on wrong tags, incomplete module lists, or contaminated artifacts."""
+    if not __debug__:
+        raise SystemExit("Artifact validation requires assertions; do not use Python -O")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="Release tag; must exactly equal v<project.version>")
     parser.add_argument("--tag-only", action="store_true", help="Check identity before building")
