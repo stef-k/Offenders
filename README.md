@@ -232,6 +232,7 @@ successful data. There are no retries or queued refreshes.
 Global:
 
 - `q` — quit
+- `a` — open Coverage / Recommendations (manual, read-only analysis)
 - `r` — refresh now
 - `p` — cycle Period (first press from default `7d` requests `30d`)
 - `t` — toggle table cursor mode (row/cell)
@@ -327,6 +328,36 @@ Edit report settings in `offenders_report.py`:
 
 - `TOP_COUNT` — number of offenders to show
 - `IGNORE_PRIVATE` — skip private/loopback/link-local IPs
+
+### Coverage / Recommendations
+
+From the dashboard, press `a` to open one manual, read-only analysis snapshot.
+`Esc` or `q` closes it; reopening starts a new snapshot. Analysis runs in a
+background worker independently of the 30-second report refresh, `r`, period,
+filter, view, and jail/IP navigation. It does not change dashboard report health.
+
+The candidate table preserves policy order. Move between rows to read the
+selected service/source, pattern counts, timestamp basis, coverage facts, up to
+three literal examples, and all decision limitations:
+
+- **Review existing disabled jail/filter** identifies a possible validation
+  target. Its filter suitability is not established and it is not an instruction
+  to enable the jail.
+- **Review enabled jail/filter coverage** asks about substantial recurring
+  evidence. It does not prove a jail failed or that a ban should already have
+  happened: pre-ban failures, multiple clients, and ordinary timing/settings can
+  explain visible records.
+- **Investigate custom jail/filter candidate** identifies a supported gap for
+  investigation. No configuration has been generated or regex validated; an
+  existing suitable definition remains preferable if later found.
+
+**No recommendation** is normal. Suppression counts explain below-threshold,
+non-global-only, inactive, enabled-covered, and insufficient-evidence decisions.
+Zero-pattern results summarize analyzed, unsupported, and unavailable/skipped/
+partial source evidence. Partial evidence is explicitly labeled, never promoted
+into a recommendation. Local wall-clock and unknown timestamps cannot enforce
+an exact UTC lookback. **Analysis unavailable** instead means the workflow failed.
+This screen provides no validation, configuration generation, or mutation controls.
 
 Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
 Log paths are configured in `offenders_report.py`; GeoIP paths are owned by
@@ -443,6 +474,14 @@ negative. Partial positive history can qualify with its limitations retained.
 Every group receives one frozen candidate, suppression, or insufficient-evidence
 decision with its original group and contributing coverage facts. Findings are a
 subset of those decisions, with no scores, UI, regex validation, or mutation.
+`offenders_recommendations_ui` owns only the manual workflow and presentation.
+Opening its screen runs host -> sources -> coverage -> evidence -> patterns ->
+findings in one background worker, sharing the exact source inventory between
+coverage and evidence. Policy remains in #33 (`offenders_findings`); validation
+remains future #35 work. There is no automatic or persistent analysis, report
+refresh hook, or second evidence cache. Closing cancels result delivery; bounded
+underlying reads may finish afterward.
+
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
