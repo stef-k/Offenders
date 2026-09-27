@@ -7,10 +7,11 @@ import gzip
 import ipaddress
 import os
 import re
-import subprocess
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Tuple
+
+from offenders_geoip import DatabaseHealth, Enrichment, geoip
 
 from offenders_fail2ban import JailStatus, get_jail_list, get_jail_status
 
@@ -21,9 +22,6 @@ from offenders_fail2ban import JailStatus, get_jail_list, get_jail_status
 LOG_CURRENT = "/var/log/fail2ban.log"
 LOG_ROTATED = "/var/log/fail2ban.log.1"
 LOG_GZ_GLOB = "/var/log/fail2ban.log.*.gz"
-
-GEO_COUNTRY_DB = "/usr/share/GeoIP/dbip-country-lite.mmdb"
-GEO_ASN_DB = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
 
 TOP_COUNT = 20
 LOOKBACK_DAYS = 7  # 0 => all available
@@ -50,6 +48,7 @@ class Offender:
     country: str
     asn: str
     asn_org: str
+    enrichment: Enrichment | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +60,7 @@ class Report:
     top_offenders: List[Offender]
     jail_statuses: List[JailStatus]
     last_10_bans: List[str]
+    geoip_health: dict[str, DatabaseHealth] = field(default_factory=dict)
 
     @property
     def jail_list(self) -> List[str]:
@@ -198,110 +198,6 @@ def filter_private_ips(ips: Iterable[str]) -> List[str]:
 
 
 # =========================
-# Geo/ASN lookups
-# =========================
-
-
-def _geoip2_lookup(ip: str) -> Optional[Tuple[str, str, str]]:
-    try:
-        import geoip2.database  # type: ignore
-    except Exception:
-        return None
-
-    country = "Unknown"
-    asn = "No ASN"
-    asn_org = "No ASN org"
-
-    try:
-        if os.path.isfile(GEO_COUNTRY_DB):
-            with geoip2.database.Reader(GEO_COUNTRY_DB) as r:
-                resp = r.country(ip)
-                if resp and resp.country and resp.country.name:
-                    country = resp.country.name
-    except Exception:
-        pass
-
-    try:
-        if os.path.isfile(GEO_ASN_DB):
-            with geoip2.database.Reader(GEO_ASN_DB) as r:
-                resp = r.asn(ip)
-                if resp and resp.autonomous_system_number:
-                    asn = str(resp.autonomous_system_number)
-                if resp and resp.autonomous_system_organization:
-                    asn_org = resp.autonomous_system_organization
-    except Exception:
-        pass
-
-    return country, asn, asn_org
-
-
-def _mmdblookup_country(ip: str) -> str:
-    if not os.path.isfile(GEO_COUNTRY_DB):
-        return "Unknown"
-
-    try:
-        p = subprocess.run(
-            ["mmdblookup", "--file", GEO_COUNTRY_DB, "--ip", ip],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        txt = p.stdout.replace("\n", " ")
-        m = re.search(r'"country".*?"en"\s*:\s*"([^"]+)"', txt)
-        return m.group(1) if m else "Unknown"
-    except Exception:
-        return "Unknown"
-
-
-def _mmdblookup_asn(ip: str) -> Tuple[str, str]:
-    if not os.path.isfile(GEO_ASN_DB):
-        return "No ASN", "No ASN org"
-
-    try:
-        p = subprocess.run(
-            ["mmdblookup", "--file", GEO_ASN_DB, "--ip", ip],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        out = p.stdout.splitlines()
-
-        asn = "No ASN"
-        org = "No ASN org"
-
-        for i, line in enumerate(out):
-            if "autonomous_system_number" in line and i + 1 < len(out):
-                value_line = out[i + 1].strip()
-                m = re.search(r"(\d+)", value_line)
-                if m:
-                    asn = m.group(1)
-                break
-
-        for i, line in enumerate(out):
-            if "autonomous_system_organization" in line and i + 1 < len(out):
-                value_line = out[i + 1].strip()
-                value_line = value_line.lstrip().lstrip('"')
-                value_line = re.sub(r'".*$', "", value_line)
-                if value_line:
-                    org = value_line
-                break
-
-        return asn, org
-    except Exception:
-        return "No ASN", "No ASN org"
-
-
-def geo_lookup(ip: str) -> Tuple[str, str, str]:
-    got = _geoip2_lookup(ip)
-    if got is not None:
-        return got
-
-    country = _mmdblookup_country(ip)
-    asn, org = _mmdblookup_asn(ip)
-    return country or "Unknown", asn or "No ASN", org or "No ASN org"
-
-
-# =========================
 # Main report builder
 # =========================
 
@@ -320,6 +216,8 @@ def build_report(
 
     jail_statuses = [get_jail_status(jail) for jail in get_jail_list()]
 
+    geoip_health = geoip.refresh()
+
     if not ban_lines:
         return Report(
             generated_at=dt.datetime.now(),
@@ -329,6 +227,7 @@ def build_report(
             top_offenders=[],
             jail_statuses=jail_statuses,
             last_10_bans=[],
+            geoip_health=geoip_health,
         )
 
     ips = extract_ips(ban_lines)
@@ -340,14 +239,15 @@ def build_report(
 
     offenders: List[Offender] = []
     for ip, c in top:
-        country, asn, asn_org = geo_lookup(ip)
+        enrichment = geoip.lookup(ip)
         offenders.append(
             Offender(
                 ip=ip,
                 count=c,
-                country=country or "Unknown",
-                asn=asn or "No ASN",
-                asn_org=asn_org or "No ASN org",
+                country=enrichment.country.value or "Unknown",
+                asn=enrichment.asn.value or "No ASN",
+                asn_org=enrichment.asn.organization or "No ASN org",
+                enrichment=enrichment,
             )
         )
 
@@ -361,6 +261,7 @@ def build_report(
         top_offenders=offenders,
         jail_statuses=jail_statuses,
         last_10_bans=last10,
+        geoip_health=geoip.health(),
     )
 
 
