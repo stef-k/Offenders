@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "guards": {
+    "loc": {
+      "allowedLargeFiles": [
+        {
+          "path": "offenders.py",
+          "reason": "Temporary user-approved exception for issue #13: retain the existing single-module application (703 counted lines) because module splitting is explicitly out of scope. Revisit this exception during application restructuring."
+        }
+      ]
+    }
+  }
+}

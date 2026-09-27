@@ -1,0 +1,3 @@
+Status
+|- Number of jail:	8
+`- Jail list:	nginx-badbots, nginx-wp-login, nginx-xmlrpc, recidive, sshd, wayfarer-nginx-404, wayfarer-nginx-login, wayfarer-nginx-scanner

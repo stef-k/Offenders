@@ -1,0 +1,23 @@
+# Keep the single-module application installable without restructuring it.
+[build-system]
+requires = ["setuptools>=77,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "offenders"
+version = "0.1.0"
+description = "A Fail2Ban log and jail dashboard for the terminal"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = ["textual>=8.2.8,<9"]
+
+# MMDB enrichment remains optional; the system mmdblookup fallback is retained.
+[project.optional-dependencies]
+geoip = ["geoip2>=5.3,<6"]
+
+[project.scripts]
+offenders = "offenders:main"
+
+[tool.setuptools]
+py-modules = ["offenders"]
