@@ -1,42 +1,79 @@
 # Offenders (Fail2Ban TUI)
 
-A **Textual**-based terminal UI (TUI) that reads Fail2Ban logs and shows:
+Offenders is a Linux terminal dashboard for Fail2Ban history and live jail status.
+Inspect banned IPs, ASN/Country summaries, jail settings and current membership;
+run on-demand WHOIS/RDNS lookups or a manual Coverage analysis for review.
 
-- **Top banned IPs** (count + country + ASN/Org)
-- **Current active jails**
-- **Active bans per jail**
-- **Last bans** from the selected log period
-- **WHOIS / RDNS** for the currently selected IP (via system tools)
+Reports and investigation are read-only with respect to Fail2Ban configuration
+and bans. There is no ban/unban action. Coverage, validation, and custom candidates
+never install filters/jails or enable/reload Fail2Ban. The only persistent
+application-owned changes are explicit or opt-in GeoIP data/policy updates in
+your user data directory; validation also uses temporary local sample files.
 
-Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
+[Install](#install-and-upgrade) · [Controls](#key-and-action-map) ·
+[GeoIP](#optional-geoip-enrichment) · [Troubleshooting](#troubleshooting)
 
 ## Screenshot
 
 ![Offenders TUI screenshot](offenders-screenshot.jpg)
 
-## Requirements
+## Requirements and permissions
 
-- Python **3.12+**; the supported server/development baseline is Ubuntu **24.04 LTS** with Python **3.12**.
-- Fail2Ban **>= 1.0.2** installed separately (production baseline: **1.0.2**;
-  compatibility currently qualified against the 1.0.x and 1.1.x status contracts
-  used by Offenders) and logging to:
-  - `/var/log/fail2ban.log` (plus rotated logs)
-- Ability to run `fail2ban-client` (the app uses `sudo -n fail2ban-client ...`)
+The supported baseline is **Ubuntu 24.04 LTS / Python 3.12+**, with separately
+installed **Fail2Ban >=1.0.2**. Python dependencies are
+`textual>=8.2.8,<9` and `maxminddb>=3.1,<4`; package installation supplies these.
 
-### Python dependencies
+The dashboard needs Fail2Ban file logs and permission to read them. Defaults are
+`/var/log/fail2ban.log`, its `.1` rotation, and `.N.gz` rotations. Journal-only
+Fail2Ban logging does not supply the ordinary report history.
 
-This project depends on:
+Live jail/status/settings calls use **`sudo -n fail2ban-client`**, with an
+eight-second limit per call. Offenders never waits for a sudo password. Denied
+commands are failures, not authoritative zero counts. Run the dashboard as your
+normal user with the required log access and narrowly scoped sudo permission.
 
-- `textual>=8.2.8,<9` (the supported Textual 8 release line)
-- `maxminddb>=3.1,<4` — direct generic MMDB reads, including a pure-Python backend;
-  no system lookup binary is needed.
+An administrator can use `visudo` to permit only the read commands below. Replace
+`OPERATOR` with the login name and verify the installed executable path with
+`command -v fail2ban-client` before adapting this example:
+
+```sudoers
+OPERATOR ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status, /usr/bin/fail2ban-client status *, /usr/bin/fail2ban-client get * bantime, /usr/bin/fail2ban-client get * findtime, /usr/bin/fail2ban-client get * maxretry, /usr/bin/fail2ban-client get * logpath, /usr/bin/fail2ban-client get * journalmatch
+```
+
+The status and first three `get` forms serve the dashboard; `logpath` and
+`journalmatch` serve optional Coverage. An administrator can further restrict
+wildcard jail arguments to the actual jail names. Do not grant unrestricted
+passwordless `fail2ban-client` access: it also exposes mutation commands.
+
+Coverage can degrade independently of the ordinary dashboard:
+
+| Evidence/action | Command or access | If unavailable |
+| --- | --- | --- |
+| Listener discovery | Non-sudo `ss -H -lntu` | Exposure evidence unavailable |
+| Optional process owners | Bounded `sudo -n ss -H -lntup` | Owner evidence partial/unavailable |
+| Systemd/source discovery | Non-sudo `systemctl` / `journalctl` | Service/journal evidence partial/unavailable |
+| Static configuration | Read `/etc/fail2ban` as the current user | Coverage cannot imply complete configuration access |
+| Source log evidence | Read discovered logs as the current user | Source evidence partial/unavailable |
+| Explicit filter validation | Installed `fail2ban-regex`, without sudo | Validation unavailable |
+
+Owner enrichment is optional; it does not require broad sudo permission. If an
+administrator chooses to allow it, limit permission to the exact `ss` invocation
+above and verify that executable's path separately.
+
+WHOIS requires optional `whois`. RDNS uses optional `dig +short -x` and falls back
+to `getent hosts` **only when dig is missing**, never after a timeout or nonzero
+exit. On Ubuntu these optional tools can be installed with
+`sudo apt-get install whois dnsutils`. They are not needed for the dashboard.
 
 ## Install and upgrade
 
-The supported application distribution is PyPI with pipx on Ubuntu 24.04 /
-Python 3.12. **The first PyPI release is pending final qualification (#48); the
-index install commands below become usable after that release is published.**
-Until then, use the source workflow below or a locally built wheel.
+**The first PyPI publication is pending.** The intended distribution name is
+`offenders`; registration acceptance and OIDC publication are not yet proven.
+The following index commands become usable after publication. Until then use
+the secondary source workflow or a locally built wheel described in
+[release preparation](RELEASING.md).
+
+After publication, pipx/PyPI is the primary Linux application path:
 
 ```bash
 sudo apt-get update
@@ -48,394 +85,273 @@ command -v offenders
 offenders
 ```
 
-For subsequent releases and removal:
+Upgrade or remove the package with:
 
 ```bash
 pipx upgrade offenders
 pipx uninstall offenders
 ```
 
-pipx isolates Python dependencies. Fail2Ban, log access, and optional host tools
-remain system responsibilities. Installation does not download GeoIP databases;
-data stays in the existing user-owned XDG location outside the package.
+pipx isolates Python dependencies; it does not install Fail2Ban or host tools or
+grant log/sudo permissions. Installation downloads no GeoIP data. Uninstalling
+the package does not delete user-owned XDG GeoIP data.
 
-Older standalone copies and their separate virtual environments are left intact.
-Before switching, record the old executable path and retain its environment for
-rollback. After installation, use `command -v offenders` (and `type -a offenders`
-in Bash) to check for an older command earlier on PATH. Deliberately adjust PATH
-or invoke the pipx executable by its reported path, then run `offenders geoip
-status` and the dashboard. Do not remove the old installation until the new one
-is verified. Rollback means restoring the old command resolution and environment;
-package uninstall does not delete GeoIP data. Production cutover belongs to #70.
+### Migrating from a standalone installation
 
-### Source and development installs
+Migration is additive. Record the old executable path and preserve its files and
+Python environment for rollback. Use `command -v offenders` (and Bash's
+`type -a offenders`) before and after installation to detect command shadowing.
+Check the executable location reported by pipx; deliberately select it through
+PATH or its full path when ready to verify `offenders geoip status` and launch.
+Keep the same user/XDG environment to retain GeoIP data and policy. Rollback
+means restoring the old command resolution and environment; retain the old
+installation until the replacement is verified. These are migration guidelines,
+not evidence of a production cutover or an instruction to perform one now.
 
-From the repository root (install `python3-venv` on Ubuntu if needed):
+### Source and advanced installs
+
+From a checkout, with `python3-venv` available:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
-```
-
-`pyproject.toml` owns the dependency bounds. A non-editable source install uses
-`python -m pip install .`; `python -m pip install -r requirements.txt` remains
-compatible. Editable installation keeps changes to documented configuration
-constants effective. For local application isolation, `pipx install .` is also
-available. See [release preparation](RELEASING.md) for wheel/sdist validation and
-the maintainer-only publishing setup.
-
-## System tools (optional but recommended)
-
-These are used for enrichment and convenience actions:
-
-- `whois` (optional) — enables the **WHOIS** popup (`w`)
-- `dig` (optional) — enables better **RDNS** output (`d`), otherwise the app falls back to `getent hosts`
-
-On Ubuntu:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y whois dnsutils
-```
-
-## GeoIP / ASN database files (required for enrichment)
-
-GeoIP enrichment is optional. Run these commands as your normal user:
-
-```bash
-offenders                       # unchanged dashboard launch
-offenders geoip status          # read-only local health, policy, last outcome
-offenders geoip update          # explicit network download and activation
-offenders geoip auto on         # opt in to future automatic checks
-offenders geoip auto off        # default; disable future automatic checks
-```
-
-Data lives in `$XDG_DATA_HOME/offenders/geoip`, or
-`~/.local/share/offenders/geoip` when unset. No sudo, cron, package installation,
-or system service change is needed. Run the CLI and dashboard with the same XDG
-environment. There is no arbitrary URL or system-target override.
-
-The updater streams Country and ASN from the fixed DB-IP Lite HTTPS source.
-Only a 404 permits falling back to the previous month, always for the whole pair.
-Connection and individual socket reads have a 30-second timeout; each download
-is limited to 128 MiB compressed and 512 MiB decompressed. Redirects are rejected.
-Malformed/truncated gzip and invalid or wrong-role MMDBs fail before activation.
-
-Validated data is installed in `generations/YYYY-MM-<unique-id>/`; one atomic
-`current` symlink replacement activates both files. Updates hold a Linux advisory
-writer lock. Readers continue using the previous files during acquisition and
-refresh against the new generation on the next report, without restarting.
-Current and the immediately previous complete generation are retained; only
-older complete engine-owned generations are pruned after activation. Failed
-acquisition leaves the previous active generation untouched. An activation that
-succeeds but encounters housekeeping failure is reported explicitly as activated.
-
-`offenders_geoip.py` owns source selection, health, MMDB readers and the bounded
-2,048-entry cache per database. Both managed candidate paths are pinned to one
-`current` target during refresh. Existing flat XDG files remain readable when no
-`current` symlink exists. Missing/unhealthy preferred data falls back independently
-to read-only `/usr/share/GeoIP/dbip-{country,asn}-lite.mmdb` files. Neither updates
-nor pruning modify legacy system files. Status reports each source and candidate
-health, including fallback failures, along with the active generation and policy.
-
-`state.json` records opt-in (default off), last check time, and outcome. The shared
-engine performs a locked automatic check once after dashboard mount when enabled.
-Disabled or less-than-24-hour checks do not access the network. A successfully
-activated current UTC month is not downloaded again automatically that month;
-a previous-month publication fallback can retry after 24 hours. Manual updates
-always run and also record check time. The 30-second report timer never checks
-for updates. Import, lookup, and status never download.
-
-Press **g** for focused GeoIP diagnostics, **u** for an explicit background Update
-now, and **a** to persist automatic updates on/off (default off; enabling takes
-effect at the next launch). Escape or q closes diagnostics. The view shows each
-source, reader, path, generation, local age, policy and latest update outcome.
-The first explicit update consents to downloading into user-owned storage.
-A successful activation reloads health and requests one normal report refresh;
-if collection is already running, the next normal refresh picks it up.
-
-A separate dashboard line warns about unavailable Country/ASN sources or active
-files older than **62 days**. Local age is only a warning; readable data remains
-usable. Healthy legacy fallback and healthy-but-unmapped addresses do not cause
-a global warning. Report freshness/degraded status remains independent. Failed
-updates retain usable active data and show their error separately in diagnostics.
-`offenders_geoip_ui.py` owns this focused UI and its background actions.
-
-`update_geoip_db.py` is now a thin rootless compatibility wrapper. Its old
-system-target, root-cron, logging, and pruning options are retired and rejected.
-Remove any old root cron invocation before adopting this user-owned workflow;
-do not run the wrapper with sudo. Existing system databases are left untouched.
-
-DB-IP Lite data is licensed under **Creative Commons Attribution 4.0**; retain
-attribution when using or redistributing it: [IP Geolocation by DB-IP](https://db-ip.com).
-See the [DB-IP Lite download and license requirements](https://db-ip.com/db/lite.php).
-Monthly MMDB files are not bundled with this repository or Python package.
-
-### Normalized ban history
-
-`offenders_events.py` parses complete timestamps, jail names, and compressed
-IPv4/IPv6 addresses once, reading current, rotated, and gzip logs. Malformed
-records are skipped. Events are sorted chronologically; equal timestamps retain
-source encounter order without deduplication. Timestamps preserve fractional
-seconds as naive local wall-clock values. Logs contain no UTC offset, so DST
-ambiguity cannot be recovered.
-
-`Report.events` is the selected history used for counts, rankings, and Last bans.
-`Report.ban_lines` is only a derived raw-text compatibility view. Private,
-loopback, and link-local filtering applies to rankings, not total/history counts.
-The Last bans table retains its second-resolution display. Press `p` to cycle `1h -> 24h -> 7d -> 30d -> all -> 1h`.
-The default `7d` is an exact rolling 168-hour window; `30d` is 720 hours.
-Finite windows include both the exact lower boundary and the single captured
-local report time, excluding future events. `all` includes every parsed event
-available in the configured logs without time boundaries. Live jail status
-remains independent of historical events.
-
-### Structured Fail2Ban status and bounded commands
-
-Each Fail2Ban status call has an eight-second timeout, closed standard input,
-and uses an argument array without a shell. The reusable runner preserves exit
-code, stdout, and stderr separately and distinguishes missing executable,
-timeout, non-zero exit, and OS execution failure. Timeout retains partial output
-and kills/reaps the direct child. A missing target behind sudo is reported as
-sudo's non-zero exit, with its stderr retained.
-
-`Report.jail_statuses` carries each jail's name, current/total failed and banned
-counts, and normalized IPv4/IPv6 banned addresses in daemon jail order. Dashboard
-ban rows retain their existing descending count order. Valid zero counts and empty
-IP/jail lists remain successful data. Missing, duplicate, or malformed required
-fields raise `Fail2BanParseError`; failed commands raise `Fail2BanCommandError`
-with the original `CommandResult` and command arguments. Neither failure becomes
-an authoritative empty list or zero count. The dashboard retains the last successful report on collection failure.
-
-After each jail status, read-only `get <jail> bantime`, `get <jail> findtime`, and
-`get <jail> maxretry` collect optional integer settings (times in seconds, including
-negative bantime for permanent bans). Every call uses the same eight-second
-bound. Unavailable settings are `None`; `setting_errors` retains command or parse
-errors without discarding valid core status. Backend and filter identity remain
-`None`: the 1.0.2 client contract exposes neither identity reliably. A file list,
-journal match, or jail name is not a reliable substitute, and configuration files
-are not scraped. The supported commands are documented in upstream's
-[1.0.2 protocol](https://github.com/fail2ban/fail2ban/blob/1.0.2/fail2ban/protocol.py).
-Other tools (GeoIP, WHOIS, and the updater) are outside this boundary.
-
-### Avoid sudo password prompts
-
-Because the app calls `sudo -n fail2ban-client ...`, you’ll typically want to allow passwordless access for `fail2ban-client` via `sudoers`.
-
-The app never requests a sudo password; denied access fails immediately.
-
-Edit safely with `visudo` and add something like:
-
-```text
-stef ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client
-```
-
-Adjust the username and path to `fail2ban-client` as needed:
-
-```bash
-which fail2ban-client
-```
-
-## Run
-
-After pipx installation, run from any directory:
-
-```bash
 offenders
 ```
 
-From the checkout, `python offenders.py` and `./offenders.py` also work with the
-source installation virtual environment active. Run as the user with log-read and Fail2Ban permissions; the
-application still invokes `sudo -n fail2ban-client` for jail status.
+`python -m pip install .` provides a non-editable source install;
+`pipx install .` provides local application isolation. With the source environment
+active, `python offenders.py` or `./offenders.py` also launches the dashboard.
+Keep the packaged modules together: copying only the old single script is not a
+current installation method. See [development tests](#development-tests) for
+contributor guidance and [release preparation](RELEASING.md) for local wheel checks.
 
-## Refresh behavior
+## Run and CLI
 
-Mount, the 30-second timer, manual refresh, GeoIP post-update refresh, and period
-changes share one active report build.
-Timer ticks during a build are skipped; pressing `r` displays “Refresh already
-in progress” without cancelling or queuing work. The same applies to `p`.
-Collection runs off the UI thread. A period change commits only after successful
-recomputation; failure retains the prior period and tables. Other refreshes use
-the committed period. Each build reads/parses logs once and selects events in memory.
+Run `offenders` from any directory after installation, as the user with the
+permissions above. The supported application forms are:
 
-A failed refresh preserves all tables and the last-success timestamp. The summary
-shows the failure time, category, bounded detail, and that displayed data comes
-from the last successful refresh, including its period. Before the first success, tables remain empty
-and the summary explicitly says data is unavailable. The next successful refresh
-replaces the report and clears the degraded state. Valid zero counts remain
-successful data. There are no retries or queued refreshes.
+```bash
+offenders                       # dashboard
+offenders geoip status          # read-only local health and policy
+offenders geoip update          # explicit download and activation
+offenders geoip auto on         # persist opt-in for future launches
+offenders geoip auto off        # persist disabled policy (the default)
+```
 
-## Key bindings
+Status, local reads, imports, and lookups never download. Manual update performs
+network access and writes user-owned data. Automatic policy is off by default;
+changing it persists local state. The normal 30-second report refresh never
+checks for GeoIP updates. There are no top-level `--help`, `--version`, or generic
+configuration commands.
 
-Global:
+## Optional GeoIP enrichment
 
-- `q` — quit
-- `a` — open Coverage / Recommendations (manual, read-only analysis)
-- `r` — refresh now
-- `p` — cycle Period (first press from default `7d` requests `30d`)
-- `t` — toggle table cursor mode (row/cell)
-- `c` or `x` — copy selection
-  - in **row** mode: copies the entire row (tab-separated)
-  - in **cell** mode: copies the current cell
+Offenders works without GeoIP databases. Country and ASN have independent health
+and source selection. **Unmapped** means a healthy database has no mapping for
+that IP; **Unavailable** means usable enrichment could not be obtained. Neither
+means there were no ban events.
 
-Dashboard summary:
+Preferred storage is `$XDG_DATA_HOME/offenders/geoip`, or
+`~/.local/share/offenders/geoip` when unset. Use the same user and XDG environment
+for the CLI and dashboard. Existing flat files there remain readable. Legacy
+`/usr/share/GeoIP/dbip-{country,asn}-lite.mmdb` files are read-only fallback,
+selected independently when preferred Country or ASN data is missing/unhealthy.
+Updates never modify those system files.
 
-- `v` cycles **IP → ASN → Country → IP**, only on the dashboard.
-- IP retains the existing top-N ranking and `IGNORE_PRIVATE` policy.
-- ASN/Country count all committed-period `Report.events`, including repeated bans,
-  private/local addresses, and IPs outside top-N. Their totals can therefore exceed
-  the visible IP-row total. Each row shows bans and distinct IPs.
-- Mapped values, healthy **Unmapped**, and **Unavailable** are separate buckets;
-  Country and ASN database outcomes are independent.
-- Projection is lazy, local, and off the UI loop. It reuses structured top-offender
-  enrichment and performs one local lookup per remaining unique IP. Both views
-  share a snapshot until the next successful report; failures retain prior data.
-- Aggregate rows support row/cell copy, but no IP inspector, WHOIS, or RDNS.
-  **Last bans** remains independently IP-navigable and supports those tools.
+The first explicit update is consent to download DB-IP Lite Country and ASN data
+into user-owned storage. Updates validate both files before activation; failed
+acquisition preserves usable active data. Successful activation becomes visible
+without restarting through normal report refresh. A dashboard update requests a
+refresh; if collection is already running, the next normal refresh picks it up.
+Diagnostics show update errors separately from report health.
 
-Dashboard filter:
+Automatic updates require opt-in. Enabling the policy takes effect at the next
+dashboard launch: one check runs after mount, subject to a 24-hour check interval.
+An already activated current UTC month is not downloaded again automatically;
+a previous-month publication fallback can retry after 24 hours. Manual updates
+are explicit and run regardless of that automatic schedule.
 
-- `f` focuses the single-line Filter; typing immediately narrows **Top banned IPs**
-  (or the active aggregate summary) and **Last bans** using a trimmed, case-insensitive literal substring.
-- Search loaded IP, jail, Country, ASN (including `AS123`), and organization fields.
-  Last bans reuse enrichment only for IPs already in Top banned IPs and remain
-  limited to the loaded last ten events. Counts and row ordering are unchanged.
-- `Enter` keeps the query and returns to the table; `Esc` clears it and returns.
-  Deleting the text also restores all loaded rows. No matches is a safe empty state.
-- The visible query survives successful refreshes and period changes; failures
-  retain the last successful filtered rows. It is not saved between runs.
-- Aggregate filtering only hides rows: matching one member IP, jail, Country,
-  ASN, or organization shows the entire bucket with its full-period counts.
-  It never filters events or recomputes counts, nor restarts a pending projection.
-- Filtering performs no I/O or report rebuilds, even during collection. Live jail
-  status and investigation screens retain their unfiltered full-period context.
-  `f` is dashboard-only.
+Diagnostics show each source, reader health, path, local age, policy, and latest
+outcome. Files older than **62 local days** produce a stale warning, not invalidity;
+readable data remains usable. Healthy fallback and healthy-but-unmapped addresses
+do not cause the global unavailable/stale warning.
 
-Jail detail:
+No root cron job, `mmdblookup`, `geoip2`, network GeoIP lookup API, or bundled monthly
+dataset is needed. If migrating an old updater, retire its root cron invocation;
+old system-target/updater flags are no longer supported. The compatibility wrapper
+`update_geoip_db.py` is rootless and is not the normal installed command.
 
-- Focus **Active bans per jail**, move to a jail row, and press `Enter` to open it.
-- `Esc` or `q` — return one screen, preserving the underlying navigation context.
-- `r` and `p` remain available in detail. Successful refreshes update the open jail;
-  failed refreshes retain its last successful status, history, and live IP snapshot.
-- `e` — expand jail history from 10 to 50 to 100 to all-in-range events.
-  Expansion survives successful refreshes and period changes; reopening starts at 10.
+DB-IP Lite is licensed under **Creative Commons Attribution 4.0**. Retain
+[IP Geolocation by DB-IP](https://db-ip.com) attribution when using or redistributing
+it; see the [DB-IP Lite license requirements](https://db-ip.com/db/lite.php).
 
-Jail counters/settings are **current live status**, not period-filtered totals.
-History is filtered by the selected period and shown newest first. Current banned
-IPs are a separate live Fail2Ban snapshot, independent of the historical period.
-An active jail with no current IPs shows `(none)`; an inactive jail shows unavailable.
-Opening, navigating, or expanding detail reuses the latest successful report and
-performs no additional collection.
+## Dashboard, history, and refresh
 
-IP inspector:
+The default period is **7d**. Choices cycle
+`1h -> 24h -> 7d -> 30d -> all -> 1h`. Finite periods are rolling local-time windows
+(7d is 168 hours; 30d is 720), from the lower boundary through the report time.
+`all` uses every parsed event in available logs, without time boundaries.
+Current and rotated logs, including gzip history, contribute events; malformed
+records are skipped. Source timestamps without offsets remain local wall-clock
+values: timezone/DST ambiguity cannot be recovered. Tables display seconds.
 
-- `Enter` on a real **Top banned IPs**, **Last bans**, or **jail history** row
-  opens that normalized IP without collecting logs or querying Fail2Ban.
-- The snapshot shows period ban count, first/last seen, distinct jails, per-jail
-  counts, newest ten events, report timestamp, and independent Country/ASN states.
-  Current ban membership and current jails are separate from period history.
-  Healthy unmapped enrichment is distinct from unavailable enrichment.
-- `Enter` on the inspector jail table opens historical or current jail detail.
-  `Esc`/`q` backs out one screen to the same inspector or jail detail, retaining
-  history expansion and table context. Dashboard return reselects the IP if present.
-- Successful refreshes and global `p` period changes update the same selected IP
-  in place, including when it disappears from history/current bans. Failed refreshes
-  retain the last successful snapshot. Local projection runs off the UI thread.
-- `c`/`x` retain the focused table's row/cell copy behavior.
+Historical counts and Last bans describe the committed period; current jail
+counters and banned addresses describe the live Fail2Ban snapshot. Top IPs can
+exclude private, loopback, and link-local addresses. ASN/Country summaries count
+all committed-period events, including repeated bans and private/local addresses
+outside the Top IP ranking. Aggregate rows show ban and distinct-IP counts with
+separate mapped, Unmapped, and Unavailable buckets. Their totals can exceed the
+visible Top IP total. Last bans displays the newest ten events.
 
-Network tools (dashboard selected IP or inspector's fixed IP):
+Startup, the 30-second timer, manual refresh, period changes, and post-update
+refresh share **one active report build**. Requests during a build do not cancel
+or queue work; manual refresh/period requests report that refresh is in progress.
+A period change commits only on success. Failure retains last-known-good tables,
+period, and timestamp with a degraded message; before the first success, data is
+explicitly unavailable. A successful recovery replaces the data and clears the
+warning. Valid zero counts are successful data.
 
-- `w` — WHOIS (requires `whois`)
-- `d` — reverse DNS
-  - runs `dig +short -x`; falls back to `getent hosts` only for command-not-found,
-    never for timeout or non-zero exit
+Filtering is display-only, in memory, and never reruns collection. A trimmed,
+case-insensitive literal query matches loaded IP/jail/Country/ASN/organization
+fields in the summary and Last bans. Last bans enrichment is limited to IPs
+already in Top IPs. Aggregate matching shows a whole bucket with its full counts,
+not just matching events. The query survives refresh/period changes but not a
+restart. Live jail status and investigation retain their unfiltered context.
 
-Both tools are explicit on-demand actions, run without sudo off the UI thread,
-with an eight-second timeout per command and no retries. Output identifies the
-command, stdout/stderr and failure category; rendered/copied text is capped at
-approximately 200 KiB.
+## Key and action map
 
-Modal popup (WHOIS/RDNS output):
+Keys are contextual: focused text input handles typing, and screen-local actions
+take precedence over dashboard bindings. The map below describes supported
+contexts rather than promising every app binding on every modal.
 
-- `esc` or `q` — close
-- `c` — copy output (prints to stdout if clipboard isn't available)
+| Context | Key/action | Result |
+| --- | --- | --- |
+| Dashboard | `q` | Quit |
+| Dashboard; jail/IP detail | `r` / `p` | Refresh / request next period, sharing the single-build gate |
+| Dashboard | `f` | Focus filter; Enter keeps query and returns to table; Esc clears and returns |
+| Dashboard | `v` | Cycle IP / ASN / Country summary |
+| Dashboard | `a` | Open one Coverage analysis snapshot |
+| Dashboard | `g` | Open GeoIP diagnostics |
+| Dashboard tables; jail/IP detail tables | `c` / `x` | Copy focused row (tab-separated) or cell, according to cursor mode |
+| Dashboard tables; jail/IP detail tables | `t` | Toggle focused table row/cell cursor mode |
+| Dashboard real Top IP or Last bans row | Enter | Open IP inspector |
+| Dashboard Active bans per jail row | Enter | Open jail detail |
+| Dashboard real Top IP or Last bans row; IP inspector | `w` / `d` | Explicit WHOIS / RDNS for the selected/fixed IP |
+| GeoIP diagnostics | `u` / `a` | Update now / persist automatic-policy toggle |
+| GeoIP diagnostics | Esc / `q` | Close |
+| Jail detail | `e` | Expand history 10 → 50 → 100 → all in period; stays at all |
+| Jail history real-IP row | Enter | Open IP inspector |
+| IP inspector jail row | Enter | Open jail detail |
+| Jail detail; IP inspector | Esc / `q` | Back one screen |
+| Command output | `c` | Copy rendered output |
+| Command output | Esc / `q` | Close |
+| Coverage finding | `v` | Open existing-filter validation or custom-candidate screen |
+| Existing-filter validation | `v` / Enter on target | Explicitly validate selected target |
+| Custom candidate | `v` | Explicitly generate and validate a fixed template |
+| Custom candidate | `c` | Copy only an exposed reviewable result |
+| Coverage; validation; custom candidate | Esc / `q` | Close |
+
+Aggregate rows support row/cell copying but do not represent one IP: no IP
+inspector or WHOIS/RDNS is available from them. Last bans remains IP-navigable.
+Copy actions use terminal clipboard support, with stdout fallback on a reported
+clipboard exception. Command-output `c` copies output, not a table selection.
+
+## Jail and IP investigation
+
+Open a jail from Active bans per jail. Counters and available bantime/findtime/
+maxretry settings are live values, independent of period history. Unavailable
+settings are not zero; backend/filter identity may be unavailable. Current banned
+IPs are separate from historical bans: `(none)` means a valid empty current list,
+while an inactive jail has unavailable current membership.
+
+Jail history is newest first and expands within the selected period. Opening or
+expanding detail reuses the last successful report without extra collection.
+Expansion survives refresh and period changes; reopening starts at ten.
+
+Open an IP from a real Top IP, Last bans, or jail-history row. Its inspector shows
+period ban count, first/last seen, distinct jails, per-jail counts, newest ten
+events, report timestamp, and independent Country/ASN states. Current membership
+is separate from period history. Enter on an inspector jail opens its detail;
+back navigation preserves the underlying jail/IP context and history expansion.
+Returning to the dashboard reselects the IP when present.
+
+Successful refresh/period changes update open jail/IP views in place, even if the
+selected IP disappears from history or current bans. Failures retain the last
+successful snapshot. WHOIS/RDNS are explicit on-demand network tools, never
+background enrichment. Commands run without sudo with eight-second timeouts and
+no retries; output shows command, stdout/stderr, and failure category. Displayed
+and copied output is capped at approximately 200 KiB.
+
+## Coverage, recommendations, and validation
+
+Opening Coverage starts one explicit background analysis snapshot. Reopening
+starts a new analysis; recently collected evidence may be reused. Normal dashboard
+refresh never runs it. Analysis is independent of report health and may be partial
+or unavailable because listeners, owners, journals, configuration, or logs cannot
+be read. Read the source limitations alongside every result.
+
+Host bindings do **not** establish Internet reachability. Source coverage does
+not establish maliciousness, filter suitability, or that a ban should already
+exist. Pattern recognition uses a fixed supported catalog of authentication
+failures and specific web probes, not generic anomaly detection. Unsupported
+formats remain unsupported. File evidence uses bounded current/plain-rotation
+tails; Coverage does not read compressed history, unlike ordinary ban reports.
+Local/unknown timestamps cannot establish an exact UTC lookback.
+
+Recommendations ask you to review an existing disabled definition, review enabled
+coverage, or investigate a supported custom gap. They are not instructions to
+enable a jail. No recommendation is a normal result; suppression and evidence
+summaries explain limitations. Analysis unavailable instead indicates failure.
+
+Existing-filter validation requires explicit target selection and execution;
+opening/highlighting alone does not validate. It uses bounded retained target and
+same-source context samples with installed `fail2ban-regex`, without sudo or DNS
+lookups. It does not reacquire logs or change configuration. Counts describe tested
+lines, which may differ from logical records. Success means the tested sample
+matched, **never that a filter is safe**. Context is not a known-clean corpus:
+context matches need review and zero matches do not prove low false-positive risk.
+Missing context evidence is unavailable, not zero.
+
+Custom generation supports only fixed Nginx/Apache sensitive-dotfile and
+path-traversal gaps. It does not generate generic regexes or duplicate known stock
+authentication patterns. Filter/jail snippets are exposed only when their exact
+filter text validates with all tested target lines matched and none missed/ignored.
+Partial results retain their limitations. Withheld results cannot be copied.
+
+Candidates start `enabled = false`, inherit local ban policy for operator review,
+and are copy-only. Wiring has not been activated or daemon-tested. Offenders never
+writes suggested configuration files, installs/enables/reloads jails, or bans or
+unbans an IP. Review evidence and local policy independently before any manual use.
 
 ## Configuration
 
-Edit report settings in `offenders_report.py`:
+There is no generic user configuration file. Periods are fixed runtime choices;
+GeoIP data and automatic policy are user-owned XDG state.
 
-- `TOP_COUNT` — number of offenders to show
-- `IGNORE_PRIVATE` — skip private/loopback/link-local IPs
+For deliberately maintained **source builds**, advanced constants are:
 
-### Coverage / Recommendations
+- `TOP_COUNT` and `IGNORE_PRIVATE` in [offenders_report.py](offenders_report.py):
+  Top IP ranking size and exclusion of private/loopback/link-local addresses.
+- `LOG_CURRENT`, `LOG_ROTATED`, and `LOG_GZ_GLOB` in that file: report log paths.
+- `CHECK_INTERVAL_SECONDS` in [offenders.py](offenders.py): report refresh interval.
 
-From the dashboard, press `a` to open one manual, read-only analysis snapshot.
-`Esc` or `q` closes it; reopening starts a new snapshot. Analysis runs in a
-background worker independently of the 30-second report refresh, `r`, period,
-filter, view, and jail/IP navigation. It does not change dashboard report health.
+These are source edits, not settings exposed to normal pipx users. Editable
+installation keeps source changes effective; package upgrades replace installed
+code. Do not confuse ranking exclusions with full-period aggregate/history counts.
 
-The candidate table preserves policy order. Move between rows to read the
-selected service/source, pattern counts, timestamp basis, coverage facts, up to
-three literal examples, and all decision limitations:
+## Troubleshooting
 
-- **Review existing disabled jail/filter** identifies a possible validation
-  target. Its filter suitability is not established and it is not an instruction
-  to enable the jail.
-- **Review enabled jail/filter coverage** asks about substantial recurring
-  evidence. It does not prove a jail failed or that a ban should already have
-  happened: pre-ban failures, multiple clients, and ordinary timing/settings can
-  explain visible records.
-- **Investigate custom jail/filter candidate** identifies a supported gap for
-  investigation. No configuration has been generated or regex validated; an
-  existing suitable definition remains preferable if later found.
-
-**No recommendation** is normal. Suppression counts explain below-threshold,
-non-global-only, inactive, enabled-covered, and insufficient-evidence decisions.
-Zero-pattern results summarize analyzed, unsupported, and unavailable/skipped/
-partial source evidence. The UI never upgrades evidence beyond the #33 decision; partial positive
-evidence can underpin a candidate, with all partial/truncated limitations retained. Local wall-clock and unknown timestamps cannot enforce
-an exact UTC lookback. **Analysis unavailable** instead means the workflow failed.
-Press `v` on a finding to open filter validation. Select one existing jail/filter
-and explicitly press `v` or Enter to validate it. Merely opening or highlighting
-a target does not run validation. `Esc` / `q` closes the validation screen.
-Custom-gap `v` instead opens a dedicated custom-candidate screen. Press `v`
-again to explicitly generate and validate a fixed template. Only Nginx/Apache
-`sensitive_dotfile` and `path_traversal` signatures have custom templates.
-Known stock authentication, database-admin/CGI and partially overlapping WordPress
-patterns intentionally receive no generated duplicates: investigate/restore the
-existing definition first.
-
-Candidate filter and jail text appears only after the exact generated bytes pass
-validation with every tested target line matched and zero missed/ignored lines.
-Partial validation can remain reviewable with all limitations visible. Context is
-not a known-clean corpus; context matches require review, and zero matches do not
-prove low false-positive risk. Target matching never proves safety.
-
-The candidate is read-only and starts `enabled = false`; local inherited ban
-settings require operator review. Its jail wiring was not activated or
-daemon-tested. `c` copies the displayed filter and jail snippets (or prints them
-if clipboard support fails), but never writes the suggested files. Withheld
-results show reasons/evidence without exposing or copying snippets.
-
-Validation uses bounded local samples retained by the analysis and Fail2Ban's own
-installed `fail2ban-regex`. It does not reacquire logs, perform DNS lookups, use
-sudo, reload/enable jails, or write configuration. Target and same-source context
-samples each contain at most 40 logical records and 64 KiB of UTF-8 text.
-Displayed examples are limited to three per sample, 512 UTF-8 bytes each.
-Match/miss/ignored counts describe **tested lines**, which can differ from logical
-records for multiline text. Target matches show that the filter matched lines in
-this bounded target sample; misses and ignored lines are concrete review evidence.
-Context matches are not automatically false positives, and zero context matches
-do not establish low false-positive risk. Successful validation does not establish
-that a filter is safe or suitable for enabling. Samples may be partial; missing
-context counts are unavailable, never assumed zero.
-
-The existing-filter validation screen provides no configuration generation or mutation controls.
-
-Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
-Log paths are configured in `offenders_report.py`; GeoIP paths are owned by
-`offenders_geoip.py`.
+| Symptom | What to check |
+| --- | --- |
+| Fail2Ban command denied/unavailable, timeout, or parse failure | Read the degraded detail; verify Fail2Ban availability, actual client path, and narrowly scoped noninteractive sudo permission. Last-good data is retained; it is not current success. |
+| Missing or unreadable report history | Verify configured file paths and current-user read access, including rotations. Missing files are skipped, so no history does not prove there were no bans; unreadable files can fail collection. |
+| GeoIP unavailable or reader failure | Inspect diagnostics/status for independent Country/ASN sources and reader errors; check the same user/XDG environment and file readability. Unmapped is a different state. |
+| GeoIP stale | Local age exceeds 62 days; readable data remains usable. Choose an explicit update if desired. |
+| GeoIP update failure | Read the latest outcome; usable active data is preserved. Check the reported network/storage/validation error before choosing another explicit attempt. |
+| WHOIS/RDNS unavailable | Check the named optional tool and command failure; RDNS falls back to getent only when dig is missing. |
+| Coverage partial/unavailable | Read source limitations for owner/journal/config/log access. Optional evidence failure is not proof of no exposure or complete protection. |
+| Unexpected old dashboard or unrecognized GeoIP command | Use `command -v offenders` and Bash `type -a offenders` to check whether the retained standalone executable shadows pipx. |
 
 ## License
 
