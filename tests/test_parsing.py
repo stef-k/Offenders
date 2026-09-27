@@ -1,91 +1,96 @@
-"""Offline characterization of the dashboard's log, IP, and jail contracts."""
+"""Offline contracts for normalized history and date-based report selection."""
 
 import datetime as dt
 import gzip
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
-import offenders_report as offenders
+import offenders_events as events
+import offenders_report as reports
 
 
 class ParsingTests(unittest.TestCase):
-    """Exercise parsing directly without starting the UI or enrichment tools."""
+    """Exercise complete event parsing without UI or enrichment tools."""
 
-    def test_ban_recognition_and_ip_normalization(self):
-        """Accept Ban events for both families, preserving repeated events."""
-        lines = [
-            "2026-09-27 12:00:00,123 fail2ban.actions [996]: NOTICE [sshd] Ban 8.8.8.8",
-            "2026-09-27 12:00:01 fail2ban.actions [996]: NOTICE [sshd] Ban 2606:4700:0000:0000:0000:0000:0000:ABCD",
-            "2026-09-27 12:00:02 fail2ban.actions [996]: NOTICE [sshd] Ban 8.8.8.8",
-        ]
-        self.assertTrue(all(offenders.is_real_ban_line(line) for line in lines))
-        self.assertEqual(offenders.extract_ips(lines), ["8.8.8.8", "2606:4700::abcd", "8.8.8.8"])
+    def test_timestamp_ip_and_jail_normalization(self):
+        """Preserve local microseconds and skip PID/logger bracket tokens."""
+        for fraction, microseconds in [("", 0), (",1", 100000), (",123456", 123456), (".789", 789000)]:
+            with self.subTest(fraction=fraction):
+                line = f"2024-02-29 12:34:56{fraction} [fail2ban.actions] [996]: NOTICE [nginx-http-auth] Ban 2606:4700:0:0:0:0:0:ABCD\n"
+                event = events.parse_ban_event(line)
+                self.assertEqual(event.timestamp, dt.datetime(2024, 2, 29, 12, 34, 56, microseconds))
+                self.assertIsNone(event.timestamp.tzinfo)
+                self.assertEqual((event.jail, event.ip), ("nginx-http-auth", "2606:4700::abcd"))
+        event = events.parse_ban_event("2026-09-27 12:00:00 fail2ban.actions [996]: NOTICE [sshd] Ban 8.8.8.8")
+        self.assertEqual((event.jail, event.ip), ("sshd", "8.8.8.8"))
 
-    def test_non_bans_and_invalid_addresses_are_ignored(self):
-        """Found, Unban, missing addresses, and invalid tokens are not bans."""
-        for line in ["", "Found 8.8.8.8", "Unban 8.8.8.8", "Ban", "Ban hostname", "Ban 999.1.2.3", "Ban 2001:::1"]:
+    def test_incomplete_or_malformed_records_are_not_events(self):
+        """Never accept a valid timestamp/address prefix or an ambiguous jail."""
+        valid = "2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"
+        invalid = ["", "Ban 8.8.8.8", valid.replace("Ban", "Unban"), valid.replace("Ban", "Found")]
+        invalid += [valid.replace("2026-09-27 12:00:00", stamp) for stamp in (
+            "2025-02-29 12:00:00", "2026-09-27 24:00:00", "2026-09-27",
+            "2026-09-27 12:00:00,", "2026-09-27 12:00:00,12oops",
+        )]
+        invalid += [valid.replace("8.8.8.8", ip) for ip in ("", "hostname", "999.1.2.3", "2001:::1", "8.8.8.8garbage")]
+        invalid += [valid.replace("[sshd]", jail) for jail in ("", "[996] [fail2ban.actions]", "[sshd] [nginx]")]
+        for line in invalid:
             with self.subTest(line=line):
-                self.assertFalse(offenders.is_real_ban_line(line))
-                self.assertEqual(offenders.extract_ips([line]), [])
+                self.assertIsNone(events.parse_ban_event(line))
 
-    def test_private_loopback_and_link_local_addresses_are_filtered(self):
-        """Keep public addresses while excluding local addresses in both families."""
+    def test_report_selection_counts_and_compatibility(self):
+        """Keep the whole cutoff date, count parsed IPs, and enrich each top IP once."""
         local = ["10.1.2.3", "172.16.0.1", "192.168.1.1", "127.0.0.1", "169.254.1.1", "fd00::1", "::1", "fe80::1"]
-        self.assertEqual(
-            offenders.filter_private_ips(["8.8.8.8", *local, "invalid", "2606:4700::1111", "8.8.8.8"]),
-            ["8.8.8.8", "2606:4700::1111", "8.8.8.8"],
-        )
-
-    def test_log_dates(self):
-        """Parse valid calendar dates and reject absent or impossible dates."""
-        self.assertEqual(offenders.parse_log_date("2024-02-29 23:59:59 Ban 8.8.8.8"), dt.date(2024, 2, 29))
-        for line in ["", "garbage", "2025-02-29 Ban 8.8.8.8"]:
-            with self.subTest(line=line):
-                self.assertIsNone(offenders.parse_log_date(line))
-
-    def test_lookback_includes_entire_cutoff_day(self):
-        """Lookback uses an inclusive calendar date, not a rolling hour window."""
-        lines = [
-            "2026-09-19 23:59:59 Ban 8.8.8.8\n",
-            "2026-09-20 00:00:00 Ban 8.8.8.8\n",
-            "2026-09-27 12:00:00 Ban 1.1.1.1\n",
-            "unknown-date Ban 8.8.4.4\n",
-            "2026-09-27 12:00:00 Unban 1.1.1.1\n",
-        ]
-        with patch.object(offenders.dt, "datetime") as clock, patch.object(offenders, "iter_unified_log_stream", return_value=lines):
-            # Use a real date while replacing only the wall-clock access.
+        lines = ["2026-09-19 23:59:59 [sshd] Ban 8.8.4.4",
+                 "2026-09-20 00:00:00 [sshd] Ban 8.8.8.8",
+                 "2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"]
+        lines += [f"2026-09-27 12:00:01 [sshd] Ban {ip}" for ip in [*local, "2606:4700::1111"]]
+        parsed = [events.parse_ban_event(line) for line in lines]
+        with patch.object(reports.dt, "datetime") as clock, \
+             patch.object(reports, "collect_ban_events", return_value=parsed), \
+             patch.object(reports, "get_jail_list", return_value=[]), \
+             patch.object(reports, "geoip") as geo:
             clock.now.return_value.date.return_value = dt.date(2026, 9, 27)
-            selected, cutoff = offenders.collect_ban_lines(7)
-            self.assertEqual(cutoff, dt.date(2026, 9, 20))
-            self.assertEqual(selected, [line.rstrip("\n") for line in lines[1:3]])
-            selected, cutoff = offenders.collect_ban_lines(0)
-            self.assertIsNone(cutoff)
-            self.assertEqual(selected, [line.rstrip("\n") for line in lines[:4]])
-
-    def test_jail_and_table_fields(self):
-        """Skip process/logger brackets and expose normalized IPs in table rows."""
-        self.assertEqual(
-            offenders._parse_ban_line_for_table("2026-09-27 12:34:56,789 [fail2ban.actions] [996]: NOTICE [nginx-http-auth] Ban 2606:4700:0:0:0:0:0:ABCD"),
-            ("2026-09-27", "12:34:56", "nginx-http-auth", "2606:4700::abcd"),
-        )
-        self.assertEqual(offenders._parse_ban_line_for_table("Ban 8.8.8.8"), ("", "", "", "8.8.8.8"))
+            result = reports.build_report()
+            self.assertEqual(result.cutoff_date, dt.date(2026, 9, 20))
+            self.assertEqual(result.events, parsed[1:])
+            self.assertEqual(result.ban_lines, lines[1:])
+            self.assertEqual(result.total_bans, len(parsed) - 1)
+            self.assertEqual(result.last_10_bans, parsed[-10:])
+            self.assertEqual([(o.ip, o.count) for o in result.top_offenders], [("8.8.8.8", 2), ("2606:4700::1111", 1)])
+            self.assertEqual(geo.lookup.call_args_list, [call("8.8.8.8"), call("2606:4700::1111")])
+            all_history = reports.build_report(lookback_days=0, ignore_private=False)
+            self.assertIsNone(all_history.cutoff_date)
+            self.assertEqual(all_history.events, parsed)
+            self.assertEqual(sum(o.count for o in all_history.top_offenders), len(parsed))
 
 
 class LogFileTests(unittest.TestCase):
-    """Read real temporary plain and compressed logs through the product stream."""
+    """Read real plain and compressed files through the event collector."""
 
-    def test_rotation_order_and_missing_optional_files(self):
-        """Read numeric gzip rotations oldest first, then .1 and current."""
+    def test_chronological_order_stable_ties_and_source_failures(self):
+        """Sort timestamps across rotations, retaining encounter order for ties."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.multiple(offenders, LOG_CURRENT=str(root / "fail2ban.log"), LOG_ROTATED=str(root / "fail2ban.log.1"), LOG_GZ_GLOB=str(root / "fail2ban.log.*.gz")):
-                self.assertEqual(list(offenders.iter_unified_log_stream()), [])
-                for number in [2, 10, 3]:
-                    with gzip.open(root / f"fail2ban.log.{number}.gz", "wt") as stream:
-                        stream.write(f"rotation {number}\n")
-                self.assertEqual(list(offenders.iter_unified_log_stream()), ["rotation 10\n", "rotation 3\n", "rotation 2\n"])
-                (root / "fail2ban.log.1").write_text("rotated first\nrotated second\n", encoding="utf-8")
-                (root / "fail2ban.log").write_text("current\n", encoding="utf-8")
-                self.assertEqual(list(offenders.iter_unified_log_stream()), ["rotation 10\n", "rotation 3\n", "rotation 2\n", "rotated first\n", "rotated second\n", "current\n"])
+            current, rotated = root / "fail2ban.log", root / "fail2ban.log.1"
+            args = (str(current), str(rotated), str(root / "fail2ban.log.*.gz"))
+            with self.assertRaises(FileNotFoundError):
+                events.collect_ban_events(*args)
+            for suffix, hour in [(".2.gz", 2), (".10.gz", 3), (".1", 1), ("", 0)]:
+                path = root / f"fail2ban.log{suffix}"
+                opener = gzip.open if suffix.endswith("gz") else open
+                with opener(path, "wt") as stream:
+                    stream.write(f"2026-09-27 0{hour}:00:00 [sshd] Ban 8.8.8.8\n")
+                    stream.write(f"2026-09-27 04:00:00 [jail{hour}] Ban 1.1.1.1\n")
+                    stream.write("malformed\n")
+            result = events.collect_ban_events(*args)
+            self.assertEqual([event.timestamp.hour for event in result], [0, 1, 2, 3, 4, 4, 4, 4])
+            self.assertEqual([event.jail for event in result[-4:]], ["jail3", "jail2", "jail1", "jail0"])
+            # A discovered rotation can vanish before it is opened.
+            with patch.object(events.glob, "glob", return_value=[str(root / "missing.gz")]):
+                self.assertEqual(len(events.collect_ban_events(*args)), 4)
+            with patch.object(events.gzip, "open", side_effect=PermissionError("unreadable")):
+                with self.assertRaises(PermissionError):
+                    events.collect_ban_events(*args)

@@ -10,6 +10,7 @@ from textual.widgets import DataTable
 
 import offenders
 from offenders_fail2ban import JailStatus
+from offenders_events import BanEvent
 from offenders_report import Offender, Report
 
 
@@ -38,11 +39,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         report = Report(
             generated_at=dt.datetime(2026, 9, 27, 12),
             cutoff_date=None,
-            total_bans=2,
-            ban_lines=[],
+            events=[BanEvent(dt.datetime(2026, 9, 27, 12), "sshd", "8.8.8.8", "diagnostic")] * 2,
             top_offenders=[Offender("8.8.8.8", 2, "Unknown", "", "No ASN")],
             jail_statuses=[JailStatus("sshd", 0, 0, 2, 2, ("8.8.8.8",))],
-            last_10_bans=["2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"],
         )
         with patch.object(offenders, "build_report", return_value=report):
             app = offenders.OffendersApp()
@@ -51,7 +50,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 table = app.query_one("#offenders", DataTable)
                 self.assertEqual(table.get_row_at(0)[:2], ["2", "8.8.8.8"])
                 self.assertEqual(app.query_one("#bans-per-jail", DataTable).get_row_at(0), ["sshd", "2"])
-                self.assertEqual(app.query_one("#last-bans", DataTable).get_row_at(0)[-1], "8.8.8.8")
+                self.assertEqual(
+                    app.query_one("#last-bans", DataTable).get_row_at(0),
+                    ["2026-09-27", "12:00:00", "sshd", "8.8.8.8"],
+                )
                 table.focus()
                 await pilot.press("t")
                 self.assertEqual(table.cursor_type, "cell")

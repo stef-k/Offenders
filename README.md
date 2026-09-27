@@ -132,6 +132,23 @@ attribution when using or redistributing it: [IP Geolocation by DB-IP](https://d
 See the [DB-IP Lite download and license requirements](https://db-ip.com/db/lite.php).
 Monthly MMDB files are not bundled with this repository or Python package.
 
+### Normalized ban history
+
+`offenders_events.py` parses complete timestamps, jail names, and compressed
+IPv4/IPv6 addresses once, reading current, rotated, and gzip logs. Malformed
+records are skipped. Events are sorted chronologically; equal timestamps retain
+source encounter order without deduplication. Timestamps preserve fractional
+seconds as naive local wall-clock values. Logs contain no UTC offset, so DST
+ambiguity cannot be recovered.
+
+`Report.events` is the selected history used for counts, rankings, and Last bans.
+`Report.ban_lines` is only a derived raw-text compatibility view. Private,
+loopback, and link-local filtering applies to rankings, not total/history counts.
+The Last bans table retains its second-resolution display. The default seven-day
+selection still includes the entire cutoff calendar date; runtime range controls
+and hour-precise selection are not introduced here. Live jail status remains
+independent of historical events.
+
 ### Structured Fail2Ban status and bounded commands
 
 Each Fail2Ban status call has an eight-second timeout, closed standard input,

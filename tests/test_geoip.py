@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from offenders_geoip import GeoIP
+from offenders_events import parse_ban_event
+
 import offenders_report as report
 
 
@@ -147,8 +149,7 @@ class GeoIPTests(unittest.TestCase):
         lines = ["2026-09-27 01:00:00 [sshd] Ban 8.8.8.8",
                  "2026-09-27 01:00:01 [sshd] Ban 8.8.4.4"]
         with patch.object(report, "geoip", self.geo), \
-             patch.object(report.os.path, "isfile", return_value=True), \
-             patch.object(report, "collect_ban_lines", return_value=(lines, None)), \
+             patch.object(report, "collect_report_events", return_value=([parse_ban_event(line) for line in lines], None)), \
              patch.object(report, "get_jail_list", return_value=[]), \
              patch("subprocess.run", side_effect=AssertionError("No external lookups")):
             result = report.build_report()
