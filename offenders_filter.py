@@ -16,7 +16,7 @@ class FilteredRows:
 
 def filter_rows(report: Report, query: str) -> FilteredRows:
     """Match individual loaded fields without enrichment or count recomputation."""
-    query = query.strip().casefold()
+    query = normalize_query(query)
     if not query:
         return FilteredRows(query, tuple(report.top_offenders), tuple(report.last_10_bans))
     enrichment = {
@@ -29,14 +29,20 @@ def filter_rows(report: Report, query: str) -> FilteredRows:
         if event.ip in jails:
             jails[event.ip].add(event.jail)
 
-    def matches(terms: tuple[str, ...]) -> bool:
-        """Use a literal Unicode-aware substring within any supplied field."""
-        return any(query in term.casefold() for term in terms)
-
     return FilteredRows(
         query,
         tuple(row for row in report.top_offenders
-              if matches((row.ip, *enrichment[row.ip], *jails[row.ip]))),
+              if matches_terms(query, (row.ip, *enrichment[row.ip], *jails[row.ip]))),
         tuple(event for event in report.last_10_bans
-              if matches((event.ip, event.jail, *enrichment.get(event.ip, ())))),
+              if matches_terms(query, (event.ip, event.jail, *enrichment.get(event.ip, ())))),
     )
+
+
+def normalize_query(query: str) -> str:
+    """Trim and casefold the shared literal visibility query."""
+    return query.strip().casefold()
+
+
+def matches_terms(query: str, terms: tuple[str, ...]) -> bool:
+    """Match a normalized query against individual already-loaded fields."""
+    return not query or any(query in term.casefold() for term in terms)

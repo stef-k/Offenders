@@ -16,6 +16,7 @@ from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from offenders_filter import filter_rows
+from offenders_summary_ui import DashboardSummary
 from offenders_jail_ui import JailDetailScreen
 from offenders_ip_ui import CommandOutputModal, IPInspectorScreen
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
@@ -71,6 +72,7 @@ class OffendersApp(App):
         ("r", "refresh", "Refresh"),
         ("p", "period", "Period"),
         ("f", "filter", "Filter"),
+        ("v", "view", "View"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
@@ -87,6 +89,7 @@ class OffendersApp(App):
         self._active_period = DEFAULT_PERIOD
         self._last_success: Optional[dt.datetime] = None
         self._last_report: Optional[Report] = None
+        self.summary_view = DashboardSummary()
         self.geoip_status = GeoIPStatus(self.refresh_report)
 
     def compose(self) -> ComposeResult:
@@ -97,7 +100,7 @@ class OffendersApp(App):
             yield self.geoip_status
             yield DashboardFilter(placeholder="Filter IP, jail, Country, ASN, organization", id="filter")
 
-            yield Static("🔥 Top banned IPs", classes="section-title")
+            yield self.summary_view
             yield DataTable(id="offenders")
 
             yield Static("🧱 Current active jails", classes="section-title")
@@ -184,6 +187,11 @@ class OffendersApp(App):
         if jail in table.rows:
             table.move_cursor(row=table.get_row_index(jail))
         table.focus()
+
+    def action_view(self) -> None:
+        """Keep summary cycling local to the dashboard screen."""
+        if self.screen is self.default_screen:
+            self.summary_view.cycle()
 
     def action_filter(self) -> None:
         """Focus the query only when the dashboard is the active screen."""
@@ -297,6 +305,8 @@ class OffendersApp(App):
 
         ip_col = None
         if table.id == "offenders":
+            if self.summary_view.mode != "IP":
+                return None
             ip_col = 1  # Bans, IP, Country, ASN, Org
         elif table.id == "last-bans":
             ip_col = 3  # Date, Time, Jail, IP
@@ -426,7 +436,10 @@ class OffendersApp(App):
         if not isinstance(table, DataTable):
             return
 
-        if table.id in ("offenders", "last-bans") and self._selected_ip() is None:
+        if table.id == "offenders" and self.summary_view.mode != "IP":
+            if not self.summary_view.copyable():
+                return
+        elif table.id in ("offenders", "last-bans") and self._selected_ip() is None:
             return
 
         idx = self._cursor_indexes(table)
@@ -521,17 +534,9 @@ class OffendersApp(App):
     def _render_history(self, r: Report) -> None:
         """Render both historical tables through one in-memory visibility path."""
         rows = filter_rows(r, self.query_one("#filter", Input).value)
-        offenders = self.query_one("#offenders", DataTable)
+        self.summary_view.render_report(r)
         last_bans = self.query_one("#last-bans", DataTable)
-        offenders.clear()
         last_bans.clear()
-        # Top offenders table
-        if rows.top_offenders:
-            for o in rows.top_offenders:
-                asn_display = f"AS{o.asn}" if o.asn.isdigit() else o.asn
-                offenders.add_row(str(o.count), o.ip, o.country, asn_display, o.asn_org, key=o.ip)
-        else:
-            offenders.add_row("0", "(no filter matches)" if rows.query else "(none)", "", "", "")
 
         # Last bans table: render the normalized history without parsing raw text.
         if rows.last_bans:
