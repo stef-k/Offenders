@@ -10,7 +10,7 @@ import sys
 import threading
 from typing import List, Optional, Tuple
 
-from textual import work
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -18,6 +18,7 @@ from textual.worker import Worker, get_current_worker
 from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
+from offenders_jail_ui import JailDetailScreen
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
 from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
 from offenders_report import DEFAULT_PERIOD, PERIODS, Report, build_report
@@ -142,6 +143,7 @@ class OffendersApp(App):
         self._build_lock = threading.Lock()
         self._active_period = DEFAULT_PERIOD
         self._last_success: Optional[dt.datetime] = None
+        self._last_report: Optional[Report] = None
         self.geoip_status = GeoIPStatus(self.refresh_report)
 
     def compose(self) -> ComposeResult:
@@ -188,6 +190,26 @@ class OffendersApp(App):
 
         self.refresh_report()
         self.set_interval(CHECK_INTERVAL_SECONDS, self.refresh_report)
+
+    @on(DataTable.RowSelected, "#bans-per-jail")
+    @on(DataTable.CellSelected, "#bans-per-jail")
+    def open_jail(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
+        """Open only a real jail identity from the latest successful report."""
+        key = event.row_key if isinstance(event, DataTable.RowSelected) else event.cell_key.row_key
+        jail = key.value
+        if self._last_report is None or jail not in self._last_report.jail_list:
+            return
+        self.push_screen(
+            JailDetailScreen(jail, self._last_report),
+            lambda result: self._restore_jail_focus(jail),
+        )
+
+    def _restore_jail_focus(self, jail: str) -> None:
+        """Reselect the viewed jail if active, including after disappearance/reappearance."""
+        table = self.query_one("#bans-per-jail", DataTable)
+        if jail in table.rows:
+            table.move_cursor(row=table.get_row_index(jail))
+        table.focus()
 
     def action_geoip(self) -> None:
         """Open focused GeoIP health and lifecycle actions."""
@@ -488,10 +510,15 @@ class OffendersApp(App):
         bans_per_jail = self.query_one("#bans-per-jail", DataTable)
         last_bans = self.query_one("#last-bans", DataTable)
 
+        selected_jail = (
+            bans_per_jail.coordinate_to_cell_key(bans_per_jail.cursor_coordinate).row_key
+            if bans_per_jail.row_count else None
+        )
         offenders.clear()
         bans_per_jail.clear()
         last_bans.clear()
 
+        self._last_report = r
         self._active_period = r.period
         self._last_success = r.generated_at
 
@@ -513,9 +540,15 @@ class OffendersApp(App):
         # Bans per jail table
         if r.bans_per_jail:
             for jail, c in r.bans_per_jail:
-                bans_per_jail.add_row(jail, str(c))
+                bans_per_jail.add_row(jail, str(c), key=jail)
         else:
             bans_per_jail.add_row("(none)", "0")
+
+        if selected_jail in bans_per_jail.rows:
+            bans_per_jail.move_cursor(row=bans_per_jail.get_row_index(selected_jail))
+        for screen in self.screen_stack:
+            if isinstance(screen, JailDetailScreen):
+                screen.update_report(r)
 
         # Last bans table: render the normalized history without parsing raw text.
         if r.last_10_bans:
