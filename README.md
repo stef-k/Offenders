@@ -34,15 +34,16 @@ normal user with the required log access and narrowly scoped sudo permission.
 
 An administrator can use `visudo` to permit only the read commands below. Replace
 `OPERATOR` with the login name and verify the installed executable path with
-`command -v fail2ban-client` before adapting this example:
+`command -v fail2ban-client` before adapting this example. Replace `JAIL` with
+an actual jail name and repeat jail-specific entries for each monitored jail:
 
 ```sudoers
-OPERATOR ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status, /usr/bin/fail2ban-client status *, /usr/bin/fail2ban-client get * bantime, /usr/bin/fail2ban-client get * findtime, /usr/bin/fail2ban-client get * maxretry, /usr/bin/fail2ban-client get * logpath, /usr/bin/fail2ban-client get * journalmatch
+OPERATOR ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status, /usr/bin/fail2ban-client status JAIL, /usr/bin/fail2ban-client get JAIL bantime, /usr/bin/fail2ban-client get JAIL findtime, /usr/bin/fail2ban-client get JAIL maxretry, /usr/bin/fail2ban-client get JAIL logpath, /usr/bin/fail2ban-client get JAIL journalmatch
 ```
 
 The status and first three `get` forms serve the dashboard; `logpath` and
-`journalmatch` serve optional Coverage. An administrator can further restrict
-wildcard jail arguments to the actual jail names. Do not grant unrestricted
+`journalmatch` serve optional Coverage. Keep jail arguments explicit rather than
+granting wildcard command access. Do not grant unrestricted
 passwordless `fail2ban-client` access: it also exposes mutation commands.
 
 Coverage can degrade independently of the ordinary dashboard:
