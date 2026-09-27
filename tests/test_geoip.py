@@ -156,3 +156,55 @@ class GeoIPTests(unittest.TestCase):
         self.assertEqual(result.top_offenders[0].asn, "15169")
         self.assertEqual(result.top_offenders[1].enrichment.country.state, "unmapped")
         self.assertEqual(result.geoip_health["country"].source, "app-managed")
+
+    def test_incomplete_records_and_read_failures_remain_distinct(self):
+        self.write(self.app, "country")
+        self.write(self.app, "asn")
+        self.geo.refresh()
+        country, asn = self.readers
+        with patch.object(country, "get", return_value={"country": []}), \
+             patch.object(asn, "get", return_value={"autonomous_system_number": "bad"}):
+            result = self.geo.lookup("8.8.8.8")
+            self.assertEqual(result.country.state, "unmapped")
+            self.assertEqual(result.asn.state, "unmapped")
+        with patch.object(country, "get", side_effect=RuntimeError("read failure")):
+            result = self.geo.lookup("1.1.1.1")
+            self.assertEqual(result.country.state, "unavailable")
+            self.assertEqual(result.asn.state, "mapped")
+        # Failures are not cached as healthy negative answers.
+        self.assertEqual(self.geo.lookup("1.1.1.1").country.state, "mapped")
+
+    def test_xdg_root_and_symlink_retarget(self):
+        with patch.dict("os.environ", XDG_DATA_HOME=str(self.root)):
+            data = self.root / "offenders/geoip"
+            data.mkdir(parents=True)
+            stable = data / "dbip-country-lite.mmdb"
+            first = self.root / "first"
+            second = self.root / "second"
+            first.write_text("France")
+            second.write_text("Greece")
+            stable.symlink_to(first)
+            service = GeoIP(legacy_root=self.legacy)
+            self.addCleanup(service.close)
+            service.refresh()
+            self.assertEqual(service.lookup("8.8.8.8").country.value, "France")
+            stable.unlink()
+            stable.symlink_to(second)
+            health = service.refresh()["country"].candidates[0]
+            self.assertTrue(health.is_symlink)
+            self.assertEqual(health.resolved_path, str(second))
+            self.assertEqual(service.lookup("8.8.8.8").country.value, "Greece")
+
+    def test_corrupt_data_section_is_unhealthy_and_allows_fallback(self):
+        preferred = self.write(self.app, "country")
+        self.write(self.legacy, "country", "France")
+        self.geo.refresh()
+        with patch.object(self.readers[0], "get", side_effect=ValueError("corrupt data")):
+            self.assertEqual(self.geo.lookup("8.8.8.8").country.state, "unavailable")
+        health = self.geo.refresh()["country"]
+        self.assertEqual(health.candidates[0].state, "invalid")
+        self.assertTrue(health.fallback)
+        self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "France")
+        preferred.write_text("Greece")
+        self.assertEqual(self.geo.refresh()["country"].source, "app-managed")
+        self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "Greece")

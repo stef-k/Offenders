@@ -103,6 +103,8 @@ class _Database:
         self.cache = OrderedDict()
         self.health = DatabaseHealth(())
         self._validated = {}
+        self._corrupt = {}
+        self._invalid_error = ()
 
     def close(self):
         """Release the reader and every result associated with its generation."""
@@ -114,6 +116,7 @@ class _Database:
 
     def refresh(self, backend, backend_error: str):
         """Select the first healthy candidate, retaining both path diagnostics."""
+        self._invalid_error = backend.InvalidDatabaseError if backend else ()
         candidates = []
         selected = None
         for source, path in zip(("app-managed", "legacy-system"), self.paths):
@@ -133,6 +136,9 @@ class _Database:
 
     def _validate(self, health, identity, backend, backend_error, select):
         """Open candidates for metadata validation; reuse the active generation."""
+        corrupt = self._corrupt.get(health.source)
+        if corrupt and corrupt[0] == health.generation:
+            return replace(health, state="invalid", detail=corrupt[1])
         if backend is None:
             return replace(health, state="reader_unavailable", detail=backend_error)
         if identity == self.identity and self.reader is not None:
@@ -176,6 +182,17 @@ class _Database:
                 result = LookupResult("unmapped")
             else:
                 result = self._record(self.reader.get(ip))
+        except self._invalid_error as error:
+            detail = str(error)[:240]
+            source, generation = self.identity
+            self._corrupt[source] = (generation, detail)
+            candidates = tuple(
+                replace(item, state="invalid", detail=detail, active=False)
+                if item.active else item for item in self.health.candidates
+            )
+            self.close()
+            self.health = DatabaseHealth(candidates)
+            return LookupResult("unavailable", detail=detail)
         except Exception as error:
             return LookupResult("unavailable", detail=str(error)[:240])
         self.cache[ip] = result
@@ -233,6 +250,11 @@ class GeoIP:
         with self._lock:
             for database in self._databases.values():
                 database.refresh(backend, error)
+            return self.health()
+
+    def health(self) -> dict[str, DatabaseHealth]:
+        """Snapshot health, including corruption discovered during enrichment."""
+        with self._lock:
             return {kind: database.health for kind, database in self._databases.items()}
 
     def lookup(self, ip: str) -> Enrichment:

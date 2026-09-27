@@ -261,7 +261,7 @@ def build_report(
         top_offenders=offenders,
         jail_statuses=jail_statuses,
         last_10_bans=last10,
-        geoip_health=geoip_health,
+        geoip_health=geoip.health(),
     )
 
 
