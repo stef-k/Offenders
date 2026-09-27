@@ -16,6 +16,12 @@ from offenders_report import Offender, Report
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     """Keep runtime checks offline while exercising real widgets and workers."""
 
+    def setUp(self):
+        """Never consume the operator's automatic-update opt-in during tests."""
+        policy = patch("offenders_geoip_ui.read_state", return_value={})
+        policy.start()
+        self.addCleanup(policy.stop)
+
     def test_source_and_console_target_launch_dashboard(self):
         """Both launch paths resolve the split modules and run the dashboard."""
         with patch("textual.app.App.run") as run:

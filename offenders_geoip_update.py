@@ -93,12 +93,16 @@ def set_auto(enabled, root=None):
 
 
 def automatic_due(state, now=None):
-    """Expose the opt-in/24-hour policy for a future caller, without scheduling."""
+    """Check opt-in, current UTC generation, and the 24-hour retry interval."""
     if state.get("auto") is not True:
+        return False
+    now = time.time() if now is None else now
+    month = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime("%Y-%m")
+    if state.get("generation") == month:
         return False
     last = state.get("last_check")
     return last is None or (isinstance(last, (int, float)) and
-                            (time.time() if now is None else now) - last >= 86400)
+                            now - last >= 86400)
 
 
 def _copy_bounded(source, target, limit):
