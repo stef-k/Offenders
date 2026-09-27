@@ -10,14 +10,10 @@ description = "A Fail2Ban log and jail dashboard for the terminal"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-dependencies = ["textual>=8.2.8,<9"]
-
-# MMDB enrichment remains optional; the system mmdblookup fallback is retained.
-[project.optional-dependencies]
-geoip = ["geoip2>=5.3,<6"]
+dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4"]
 
 [project.scripts]
 offenders = "offenders:main"
 
 [tool.setuptools]
-py-modules = ["offenders", "offenders_report", "offenders_fail2ban"]
+py-modules = ["offenders", "offenders_report", "offenders_fail2ban", "offenders_geoip"]

@@ -28,7 +28,8 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 This project depends on:
 
 - `textual>=8.2.8,<9` (the supported Textual 8 release line)
-- (optional) `geoip2` — only if you want Python-based MMDB lookups; otherwise the app falls back to `mmdblookup` if present.
+- `maxminddb>=3.1,<4` — direct generic MMDB reads, including a pure-Python backend;
+  no system lookup binary is needed.
 
 From the repository root, install into a virtual environment (on Ubuntu, install
 `python3-venv` first if needed). `pyproject.toml` owns the dependency bounds:
@@ -39,14 +40,7 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-Optional:
-
-```bash
-python -m pip install -e ".[geoip]"
-```
-
-The optional extra bounds `geoip2` to `>=5.3,<6`. A base install does not require
-GeoIP Python packages or database downloads. For a non-editable installation,
+A base install includes the reader but does not download databases. For a non-editable installation,
 use `python -m pip install .`; `python -m pip install -r requirements.txt` remains
 a compatible alternative. Editable installation keeps changes to the documented
 configuration constants effective when running the installed command.
@@ -55,7 +49,6 @@ configuration constants effective when running the installed command.
 
 These are used for enrichment and convenience actions:
 
-- `mmdblookup` (optional) — used when `geoip2` isn't installed
 - `whois` (optional) — enables the **WHOIS** popup (`w`)
 - `dig` (optional) — enables better **RDNS** output (`d`), otherwise the app falls back to `getent hosts`
 
@@ -63,21 +56,37 @@ On Ubuntu:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y mmdb-bin whois dnsutils
+sudo apt-get install -y whois dnsutils
 ```
 
 ## GeoIP / ASN database files (required for enrichment)
 
 This app **does not download GeoIP/ASN data**. It expects **pre-downloaded** MaxMind-style **MMDB** files on the host.
 
-By default, the script reads these stable filenames:
+Country and ASN independently prefer `dbip-country-lite.mmdb` and
+`dbip-asn-lite.mmdb` in `$XDG_DATA_HOME/offenders/geoip` (or
+`~/.local/share/offenders/geoip` when unset). Missing or unhealthy preferred files
+fall back read-only to the same filenames under `/usr/share/GeoIP`.
+No lookup creates, repairs, or downloads files.
 
-```python
-GEO_COUNTRY_DB = "/usr/share/GeoIP/dbip-country-lite.mmdb"
-GEO_ASN_DB     = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
-```
+`offenders_geoip.py` owns source selection, readers, and a 2,048-entry LRU per
+database. Before each report, resolved paths and file identity/timestamps detect
+replacement or symlink activation; only affected readers and caches are replaced.
+Readers are reused and closed at normal process teardown. A lock serializes
+lookup, refresh, and close. Future app-managed updates can use these stable paths
+without restarting the dashboard.
 
-If the files are missing, the UI still runs, but the country/ASN fields will show fallback values like **"Unknown"** / **"No ASN"**.
+`Report.geoip_health` records both candidate paths, symlink targets, existence,
+readability, generation timestamps, reader/metadata validity, diagnostics, and
+active/fallback selection independently for Country and ASN. Preferred failures
+remain visible when fallback works. Each `Offender.enrichment` distinguishes
+mapped, healthy-unmapped, and unavailable outcomes. Missing/incomplete record
+fields do not crash reports. The existing UI still displays **"Unknown"** /
+**"No ASN"** as needed; health/update UI and app-managed downloads are separate work.
+
+The dependency's [installation documentation](https://maxminddb.readthedocs.io/)
+describes the optional C extension and pure-Python fallback;
+[PyPI metadata](https://pypi.org/project/maxminddb/) includes Python 3.12 support.
 
 ### Included updater script (DB-IP Lite) — Python
 
@@ -266,7 +275,8 @@ Edit report settings in `offenders_report.py`:
 - `IGNORE_PRIVATE` — skip private/loopback/link-local IPs
 
 Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
-Log paths and GeoIP database paths are configured in `offenders_report.py`.
+Log paths are configured in `offenders_report.py`; GeoIP paths are owned by
+`offenders_geoip.py`.
 
 ## License
 
@@ -274,11 +284,12 @@ MIT — see [LICENSE](LICENSE).
 
 ## Development tests
 
-The application has three concrete modules with one-way imports:
+The application has four concrete modules with one-way imports:
 `offenders.py` owns the dashboard and entrypoints, `offenders_report.py` reads
 logs and derives enriched reports, and `offenders_fail2ban.py` owns the bounded
 command runner and structured status parsing. The dashboard imports reports;
-reports import Fail2Ban status. Source execution requires all three files together.
+reports import Fail2Ban status and `offenders_geoip.py` for enrichment.
+Source execution requires all four files together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
 LOC is the hard gate and files above 400 counted LOC require cohesion review.
@@ -302,7 +313,7 @@ It does not require a running Fail2Ban daemon.
 ### Runtime qualification
 
 Fresh installation and the offline suite were validated on Ubuntu 24.04 with
-Python 3.12.3 and Textual 8.2.8, including the optional GeoIP extra. Both the
+Python 3.12.3 and Textual 8.2.8, with the base dependencies. Both the
 installed command and executable source script rendered and exited successfully
 in a local pseudo-terminal without a live Fail2Ban daemon.
 Existing UI compatibility fallbacks remain because the parsing tests from #12
