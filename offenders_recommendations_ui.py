@@ -1,4 +1,4 @@
-"""Manual coverage presentation; acquisition stays off-loop and policy stays in #33."""
+"""Manual coverage presentation; acquisition stays off-loop and offenders_findings owns policy."""
 from collections import Counter
 from datetime import timezone
 

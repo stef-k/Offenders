@@ -1,4 +1,4 @@
-"""Pure, source-gated recognition of bounded #30 evidence; #33 owns findings."""
+"""Pure recognition of bounded offenders_evidence records; offenders_findings owns policy."""
 from __future__ import annotations
 
 from dataclasses import dataclass

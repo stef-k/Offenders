@@ -13,7 +13,7 @@ from test_candidate import web_inventory
 
 @unittest.skipUnless(shutil.which('fail2ban-regex'), 'requires local fail2ban-regex')
 class CandidateTemplateTests(unittest.TestCase):
-    """Run the public workflow through #35 against synthetic logs, never a daemon."""
+    """Run the public validation workflow against synthetic logs, never a daemon."""
 
     def test_fixed_paths_dates_and_context_boundaries(self):
         paths = {

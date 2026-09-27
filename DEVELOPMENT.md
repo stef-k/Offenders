@@ -1,217 +1,232 @@
-# Developer appendix
+# Development and architecture
 
-Preserved developer notes; architecture and maintainer documentation revision is
-tracked separately. See the [operator documentation](docs/README.md) for usage.
+This is the maintainer reference for the current codebase. User workflows belong
+in the [operator documentation](docs/README.md); artifact qualification and
+publication belong in [RELEASING.md](RELEASING.md).
 
-## Development tests
+## Development setup
 
-The application uses concrete modules with one-way imports:
-`offenders.py` owns the dashboard and entrypoints, `offenders_report.py` selects
-history and derives enriched reports, `offenders_events.py` acquires normalized
-log events, and `offenders_fail2ban.py` owns bounded commands and status parsing.
-The report imports events, Fail2Ban status, and `offenders_geoip.py` for enrichment.
-`offenders_ip.py` projects a selected IP from normalized `Report.events` and
-structured `JailStatus` address lists, keeping period history separate from current
-ban membership. It reuses top-offender enrichment or performs one on-demand local
-MMDB lookup; report-wide enrichment is unchanged. Its frozen snapshot includes
-deterministic jail counts and the newest ten events. `offenders_ip_ui.py` owns
-inspector rendering, asynchronous projection with stale-result protection, and
-bounded WHOIS/RDNS output. Jail and IP screens use explicit callbacks for pushed
-navigation without importing the app or each other.
-`offenders_host.py` exposes an explicit read-only host exposure snapshot, separate
-from ordinary report refresh. Local non-sudo `ss` supplies canonical endpoints;
-optional process-owner and batch systemd evidence may be partial or unavailable.
-Non-loopback bindings do not establish public Internet exposure. The snapshot
-provides facts only, without coverage recommendations or log analysis.
-`offenders_sources.py` consumes that supplied host snapshot explicitly and retains
-its service states and health. It checks fixed standard file candidates using
-metadata and direct readability only; missing, unreadable, unsupported, and
-unavailable candidates remain distinct. Loaded systemd units receive one bounded,
-non-sudo zero-line journal queryability probe, without reading history. Shared
-sources retain all family associations; unknown listeners stay unassociated.
-Source discovery has no UI, persistent cache, or report-refresh hook.
-`offenders_coverage.py` consumes one supplied source snapshot, retaining the exact
-upstream evidence without reacquiring host/source state. Running jails come from
-`get_jail_list()`; concrete file/journal facts use Fail2Ban 1.0.2's read-only
-`get <jail> logpath` and `journalmatch`, through the same eight-second sudo boundary.
-Custom jail names are preserved; names alone never establish running coverage.
-Static jail configuration follows `jail.conf`, lexical `jail.d/*.conf`,
-`jail.local`, lexical `jail.d/*.local` precedence. Direct filter `.conf`/`.local`
-files establish definition existence and literal journal units. Reads use the
-current user, confined to `/etc/fail2ban`, with 256-file, 1-MiB-per-file and
-8-MiB-total bounds. Raw INI parsing does not reproduce general interpolation or
-include chains; unsupported, unreadable, or oversized evidence stays partial.
-Any unresolved jail include blocks static disabled candidates because its
-enabled, filter, or source overrides are unknown; concrete runtime coverage
-remains authoritative.
-Source-family targets distinguish `covered_enabled`, `available_disabled`,
-`no_obvious_match`, and `insufficient_evidence`. An exact stock-family catalog
-can establish disabled-definition relevance, explicitly without proving a
-concrete source relationship. These are facts, not recommendations. Generic
-listeners and observed services without sources remain insufficient evidence.
-Coverage is explicitly invoked and stays outside report/dashboard refresh,
-filtering, and navigation.
-`offenders_evidence.EvidenceCollector.collect(source_inventory, force=False,
-lookback=timedelta(hours=24))` explicitly consumes one supplied #28 snapshot.
-It never rediscovers host/source/coverage state or runs on dashboard refresh.
-One in-process cache entry retains successful or partial snapshots for five
-monotonic minutes, keyed by inventory object identity and lookback; force bypasses
-it. Lookback must be a positive timedelta no greater than seven days.
-File evidence uses the resolved target, bounded 256-KiB tails from current and one
-plain `.1` rotation, at most 2,000 lines/512 KiB per source. All current sources
-precede rotations. Compressed history is not read. File timestamps stay unset;
-#31 owns source-specific timestamp interpretation and security-pattern semantics.
-Journal evidence uses one non-sudo, eight-second JSON query through #14 per readable
-unit, with the captured UTC lower bound and newest 1,000 entries (4-MiB parse cap).
-The runner still captures stdout before returning; this is a parse/retention cap,
-not a streaming subprocess-memory guarantee. Stable device/inode/byte offsets and
-journal cursors drive exact deduplication with unioned source identities. Equal
-text alone never deduplicates. Snapshots retain exact upstream associations,
-per-source record ordering, and explicit skipped/unavailable/partial/truncated
-outcomes. Global retention stops at 10,000 records or 8 MiB of UTF-8 text, with
-16 KiB per record. File line bodies preserve CR and other raw characters but omit
-the LF delimiter. No unified file/journal event chronology is inferred.
-`offenders_patterns.analyze_patterns(evidence_snapshot)` consumes that exact #30
-snapshot in memory, retaining it in a frozen pattern inventory without acquisition
-or dashboard integration. Its small explicit format catalog recognizes SSH,
-Dovecot, vsftpd, ProFTPD, and English Pure-FTPd authentication failures, plus
-Nginx/Apache HTTP-auth failures and specific rejected path-probe categories.
-Caddy is explicitly unsupported. Ordinary unrelated 404s, successful HTTP access,
-and unrecognized lines are ignored; this is not general anomaly detection.
-Only supplied source-family associations authorize recognition. Groups use stable
-semantic signatures and canonical source scopes: resolved-file aliases collapse,
-while journal units and file/journal backends remain separate. Counts measure
-recognized log records, not unique sessions. IPv4-mapped IPv6 normalizes to IPv4;
-distinct global/non-global IP counts use `ipaddress.is_global` without judgments
-about trust or maliciousness. One-event groups remain available to #33, which owns
-recurrence thresholds, coverage correlation, and finding decisions.
-Structured journal and explicit-offset file times use UTC; aware events outside
-the supplied interval are excluded. Local file times remain naive wall-clock
-values, with only the year inferred for RFC3164, and cannot enforce the UTC window.
-Missing/malformed event times remain unknown; file mtime and collection time are
-never substituted. Each time basis groups separately. Source-family analyses
-retain partial/truncated/unavailable/skipped evidence and distinguish ignored
-records from recognized records excluded by the UTC window. Output ordering uses
-source/family/signature/time basis and backend record identities, not text hashes.
-Groups keep at most three examples of 512 UTF-8 bytes each; source/group/event
-limitations retain at most 32 details of 300 bytes each, marking caps explicitly.
-`offenders_findings.build_findings(pattern_inventory, coverage_inventory)` purely
-joins #31 patterns and #29 coverage retaining the exact same #28 source inventory
-object; separately acquired snapshots raise `ValueError`. Resolved file aliases
-join once per canonical source/family. Known active service states, at least
-three recognized records, and at least one global source IP gate candidates.
-Exact pattern/filter compatibility narrows family/source coverage; source
-monitoring alone does not prove event/filter matching. Compatible enabled jails
-suppress ordinary candidates; only at least 10 records from two global IPs or
-20 records from one global IP produce an enabled tuning question. Unknown running
-filter relevance blocks disabled/custom candidates. Disabled definitions remain
-validation targets, and custom gaps require an explicit complete-enough coverage
-negative. Partial positive history can qualify with its limitations retained.
-Every group receives one frozen candidate, suppression, or insufficient-evidence
-decision with its original group and contributing coverage facts. Findings are a
-subset of those decisions, with no scores, UI, regex validation, or mutation.
-`offenders_recommendations_ui` owns only the manual workflow and presentation.
-Opening its screen runs host -> sources -> coverage -> evidence -> patterns ->
-findings in one background worker, sharing the exact source inventory between
-coverage and evidence. Policy remains in #33 (`offenders_findings`). There is no automatic or persistent analysis, report
-refresh hook, or second evidence cache. Closing cancels result delivery; bounded
-underlying reads may finish afterward.
+The contributor baseline is Ubuntu 24.04 with Python 3.12. From a clean checkout:
 
-`offenders_validation` accepts only exact finding/target objects from the supplied
-inventory. It uses the retained group's record identities for the target and the
-canonical source/family analysis's alias keys for same-source context records.
-Missing target identities fail closed. Each operation owns a secure temporary
-directory and mode-0600 sample files, cleaned after success, failure, or timeout.
-The optional `config_root` argument is a test seam; production uses `/etc/fail2ban`.
-Safe literal `filter[options]` arguments and `%(__name__)s` substitution preserve
-known effective options. Complex/unresolved options fall back to the resolved
-base stem with an explicit partial limitation.
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
+python -m unittest discover -s tests -v
+```
 
-Each non-empty target/context pass calls #14 `run_host_command` once with
-`fail2ban-regex --usedns=no --encoding=utf-8 --print-no-missed --print-no-ignored
--c /etc/fail2ban -- <sample> <filter>`, `sudo=False`, and an eight-second timeout.
-There is no shell or retry. Only the stable Fail2Ban 1.0.2 summary
-`Lines: N lines, I ignored, M matched, X missed` is parsed: exactly one summary,
-nonnegative integers, and `I + M + X == N` are required. Zero matches are valid
-execution evidence. Parsing examines the newest 256 KiB of stdout and retains
-only counts and up to 300 UTF-8 bytes of error detail. This is a **post-run parse
-and retention cap**, not a streaming process-memory bound: #14 first captures
-the process output. Full stdout/stderr are not retained in validation results.
+Use the local virtual environment, without root or changes to system Python.
+`pyproject.toml` owns dependency, version, and package metadata;
+`requirements.txt` is compatibility shorthand pointing at the project. Initial
+installation needs access to dependencies (an index or a local cache). Ordinary
+offline development and tests need no network, live Fail2Ban, or GeoIP databases.
+Release tools such as `build`, `twine`, and `actionlint` are separate contributor
+tools, not runtime dependencies.
 
-The custom-text validation API requires an exact custom
-gap candidate, valid UTF-8 text at most 64 KiB without NUL, a non-empty
-`[Definition]` / `failregex`, and only optional `[Init]`. Include chains, defaults,
-and filesystem-path inputs are rejected. Text is written to a private temporary
-`.conf`; its exact SHA-256 and byte count identify what was tested, without a
-trust score. The custom-candidate screen supplies fixed text; it has no editor.
-`offenders_validation_ui` owns an explicit single-target worker and renders
-complete/partial/unavailable evidence separately from the unchanged #33 graph.
-Closing discards delivery while the backend completes bounded execution/cleanup.
-`offenders_candidate` owns the fixed four-signature template catalog, exact retained
-custom-gap decision identity, collision checks against retained static inventory,
-and conservative source wiring. It never mines regexes from logs or recomputes
-finding policy. File wiring preserves one exact configured absolute identity,
-not its resolved alias; multiple aliases or unsafe INI/path syntax are withheld.
-Journal wiring requires one canonical safe unit, exact filter `journalmatch`,
-and jail `backend = systemd` without a logpath. Both use web ports and `usedns = no`.
-Ban policy inherits local defaults; no timing, retry or action policy is generated.
+## Architecture overview
 
-The exact UTF-8 filter bytes go through `validate_custom`; decision identity,
-target kind, SHA-256 and byte count must agree. Only complete/partial validation
-with positive tested target counts, every tested line matched and zero missed or
-ignored lines exposes either snippet. Context never controls that gate. Withheld
-results retain validation evidence but no filter/jail text.
-`offenders_candidate_ui` owns explicit off-loop generation, suppresses concurrent
-work and stale delivery, renders literal text and exposes copy only for the
-displayed reviewable result. Coverage retains its original inventory and routes
-existing findings to `ValidationScreen` unchanged.
+Concrete modules separate acquisition, projections, policy, and Textual screens.
+The dashboard consumes reports; the manual Coverage workflow consumes its own
+explicit inventory. Neither workflow silently starts the other.
 
-No production-host validation is claimed by the offline fixtures.
+| Responsibility | Modules |
+| --- | --- |
+| Entrypoint, dashboard composition, global routing, report scheduling | `offenders.py` |
+| Report model, period selection, top-offender enrichment | `offenders_report.py` |
+| Normalized ban history from current, rotated, and gzip logs | `offenders_events.py` |
+| Bounded commands, Fail2Ban status/settings/source-query parsing | `offenders_fail2ban.py` |
+| In-memory display filtering | `offenders_filter.py` |
+| Aggregate projections and presentation | `offenders_aggregate.py`, `offenders_summary_ui.py` |
+| Jail history and current-ban details | `offenders_jail_ui.py` |
+| Report-derived IP projection, inspector, WHOIS/RDNS UI | `offenders_ip.py`, `offenders_ip_ui.py` |
 
-Source execution requires the packaged `offenders*.py` modules together.
+## Dashboard and report path
 
-Code Guard uses its normal policy without a large-file exemption: 600 counted
-LOC is the hard gate and files above 400 counted LOC require cohesion review.
+A report combines selected historical ban events with independently acquired
+current jail status. Period selection filters parsed history; `all` includes all
+available parsed events. Current ban membership is not a historical event count.
+Top-offender enrichment uses local GeoIP readers.
 
-After installing the project in your virtual environment, run:
+`OffendersApp` schedules a single report worker at a time. A successful result
+becomes the committed report and period; transient collection or parsing failures
+leave the last-known-good tables intact and surface degraded status. Before any
+successful report, failures show an unavailable state. Cancellation and worker
+identity checks prevent stale completions from committing.
+
+Filtering, jail/IP navigation, and aggregate views reuse the committed report
+instead of rediscovering host state. IP/aggregate projections may perform local
+GeoIP lookups for addresses outside the enriched top list. Report collection,
+those projections, and explicit WHOIS/RDNS subprocess work run off the Textual
+event loop. Screens reject stale deliveries after replacement or closure.
+Navigation callbacks keep jail and IP screens independent of app imports.
+See [usage](docs/usage.md) for operator controls.
+
+## GeoIP lifecycle
+
+| Responsibility | Module |
+| --- | --- |
+| Source selection, independent Country/ASN health, reader lifetime and lookup cache | `offenders_geoip.py` |
+| Bounded DB-IP acquisition/validation, atomic pair activation, retention and policy state | `offenders_geoip_update.py` |
+| CLI dispatch | `offenders_geoip_cli.py` |
+| Diagnostics, manual update and automatic-policy UI | `offenders_geoip_ui.py` |
+| Source-tree compatibility wrapper | `update_geoip_db.py` |
+
+Managed data and `state.json` live in the user-owned XDG data root. App-managed
+Country/ASN files take precedence over read-only system fallback files; the two
+databases retain independent health and source selection. `maxminddb` is the reader
+backend. Generation changes invalidate reader/cache state without a restart.
+
+Imports, status queries, and ordinary report construction do not fetch data.
+Updates take a nonblocking writer lock, stage and validate both databases, then
+atomically activate the generation reference. Retention preserves the active and
+previous generation. Download size and socket-operation bounds limit acquisition;
+the socket timeout is not a total wall-clock deadline for an entire update.
+
+Automatic checks are opt-in, evaluated at dashboard startup, and rate-limited to
+at most once per 24 hours; an already-current monthly generation needs no fetch.
+Manual updates remain explicit. Runtime databases and policy state are never
+packaged in the wheel or sdist. See the [GeoIP guide](docs/geoip.md) for paths,
+operator actions, and failure states.
+
+## Coverage and recommendation pipeline
+
+The manual workflow is:
+
+```text
+host -> sources -> coverage + evidence -> patterns -> findings
+     -> recommendations UI -> validation/custom candidate
+```
+
+| Stage | Ownership |
+| --- | --- |
+| Host facts | `offenders_host.py`: bounded listeners, service and systemd facts |
+| Sources | `offenders_sources.py`: supported file/journal discovery and queryability |
+| Coverage | `offenders_coverage.py`: runtime/static Fail2Ban facts over supplied sources |
+| Evidence | `offenders_evidence.py`: bounded retained file/journal evidence and short in-process cache |
+| Patterns | `offenders_patterns.py`: fixed, source-gated semantic recognizer catalog |
+| Findings | `offenders_findings.py`: pure conservative correlation and decision policy |
+| Presentation | `offenders_recommendations_ui.py`: manual background orchestration |
+| Validation | `offenders_validation.py`, `offenders_validation_ui.py`: explicit bounded `fail2ban-regex` runs |
+| Custom candidates | `offenders_candidate.py`, `offenders_candidate_ui.py`: fixed templates and disabled copy-only candidates |
+
+Coverage and evidence receive the same source-inventory object. Findings reject
+separately acquired inventories rather than correlating mismatched host state.
+Evidence retains source identity and partial/unavailable/truncated outcomes, with
+a short cache keyed by inventory identity and lookback. Static configuration reads
+are confined and bounded; they do not implement Fail2Ban's full configuration
+interpreter. Unsupported or ambiguous evidence remains a limitation.
+
+Pattern recognition preserves UTC, local wall-clock, and unknown timestamp
+domains. File mtime is not event time. Listener facts do not prove Internet
+reachability; patterns do not prove maliciousness; coverage does not prove filter
+suitability; validation does not prove safety.
+
+Validation operates on retained target/context records in private temporary files.
+Custom generation uses a fixed template catalog, never regex synthesis from logs.
+Only the exact validated UTF-8 bytes, identified by digest and byte count, can be
+shown as a candidate after the target-match gate passes. Snippets stay disabled
+and copy-only. Closing a screen suppresses result delivery while bounded backend
+work and cleanup may finish.
+
+Coverage never runs during normal dashboard refresh. No path writes Fail2Ban
+configuration, reloads/enables jails, or bans/unbans addresses. See the
+[Coverage guide](docs/coverage.md) for the operator review workflow.
+
+## Command and safety boundary
+
+`offenders_fail2ban.run_host_command` accepts an argv array, uses no shell, closes
+stdin, and requires an explicit positive finite timeout. It uses `sudo -n` only
+when requested. Results keep stdout, stderr, return code, and failure category
+separate: missing executable, timeout, nonzero exit, and OS execution failure are
+distinct. A missing target behind sudo is observed as sudo's nonzero exit.
+Timeout kills and reaps the direct child.
+
+Fail2Ban queries use the sudo boundary, as does optional listener process-owner
+inspection. Basic listeners, systemd/journal queries, WHOIS/RDNS, static config/log
+reads, and regex validation use current-user permissions. Command output is
+captured before downstream parse/retention caps; those caps are not streaming
+subprocess-memory limits. Permission recipes belong in
+[installation](docs/installation.md).
+
+Fail2Ban inspection and configuration analysis are read-only. Normal persistent
+mutation is confined to app-owned GeoIP lifecycle state; validation may create
+private temporary files and cleans them after success or failure. Production
+Fail2Ban changes remain outside Offenders.
+
+## Packaging and distribution
+
+`pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static
+`[project].version` is the sole distribution version source. The intended
+distribution name and console command are both `offenders`, with the command
+calling `offenders:main`. Python must be at least 3.12; runtime bounds are
+`textual>=8.2.8,<9` and `maxminddb>=3.1,<4`.
+
+The explicit setuptools `py-modules` list packages the concrete runtime modules
+together. Source execution also requires those modules, not a standalone script.
+`scripts/check_distribution.py` checks the wheel and sdist against that contract.
+Pipx provides operator isolation and is not a runtime dependency.
+
+Publication is isolated to `.github/workflows/release.yml`; there is no ordinary
+PR CI workflow. Exact build, version/tag, installed-artifact, identity and Trusted
+Publishing gates live in [RELEASING.md](RELEASING.md). Local checks do not establish
+PyPI registration, an OIDC exchange, or successful publication.
+
+## Tests and evidence
+
+Run the ordinary suite from the activated development environment:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-The suite uses Python's standard-library `unittest`, temporary log files, and
-local Fail2Ban status fixtures. Running it requires no daemon, root access,
-network access, or GeoIP databases. It covers ban recognition, IP normalization
-and local-address filtering, numeric gzip rotation ordering, exact rolling
-period boundaries (`all` includes all parsed events), and jail/table parsing.
+Use standard-library `unittest`, temporary files, and offline fixtures by default.
+Prioritize behavior, safety, and regression contracts over counts or raw coverage.
+Use narrow fakes/injection at external boundaries and table/subtests when they
+reduce repetition. Test private helpers only for a concrete contract risk; avoid
+duplicating parser/backend proof in UI tests. Textual tests should prove interaction,
+report commitment, cancellation, and lifecycle behavior. Add the smallest practical
+regression test for a real defect rather than a new general harness.
 
-The suite also mounts the real Textual dashboard with a fixture report, checks
-table rendering and cursor-mode switching, and quits through the keyboard binding.
-It does not require a running Fail2Ban daemon.
+The ordinary suite needs no root, network, or live daemon. Optional tests using a
+locally installed `fail2ban-regex` skip when the executable is absent; they exercise
+synthetic samples without a daemon or host configuration mutation.
+[Fixture provenance](tests/fixtures/README.md) separates captured M6 Fail2Ban 1.0.2
+status, synthetic compatible status examples, and upstream-adapted log records.
+Neither synthetic 1.1.x-compatible output nor local runtime smoke proves a live
+1.1.x daemon or a production deployment.
 
-### Runtime qualification
+## Code Guard policy
 
-Fresh installation and the offline suite were validated on Ubuntu 24.04 with
-Python 3.12.3 and Textual 8.2.8, with the base dependencies. Both the
-installed command and executable source script rendered and exited successfully
-in a local pseudo-terminal without a live Fail2Ban daemon.
-Existing UI compatibility fallbacks remain because the parsing tests from #12
-do not protect those UI paths.
+The project policy is a 600 counted-LOC hard gate and a cohesion-review signal
+above roughly 400 counted LOC. There is no standing `offenders.py` exemption.
+REVIEW requires judgment about responsibilities and reachable risks, not mechanical
+splitting. Changed-scope findings are part of implementation review.
 
-Read-only production inspection on 2026-09-27 confirmed Ubuntu 24.04.5,
-Python 3.12.3, and Fail2Ban 1.0.2, eight active jails, readable Fail2Ban logs,
-and zero current bans in the inspected `sshd` jail. Status inspection required
-`sudo`; no server files, packages, configuration, or Fail2Ban state were changed.
+Code Guard is external review tooling, not a checked-in project executable or
+runtime dependency. In the current review environment, the installed command is:
 
-Offenders uses `fail2ban-client status`, `status <jail>`, and the three read-only
-`get <jail>` settings commands documented in the
-[operator permissions guide](docs/installation.md). These commands and status fields
-are supported on the compatibility floor; no Offenders dependency requires Fail2Ban 1.1.x. Tests use
-captured 1.0.2 status output plus representative 1.0.x/1.1.x output with nonzero
-ban counts. See [fixture provenance](tests/fixtures/README.md).
+```bash
+code-guard . --changed-only --json --json-mode compact
+```
 
-Qualification combines the local smoke test of the new application revision,
-read-only production inspection, and offline parsing tests. The new revision was
-not installed or launched on production, and no live 1.1.x daemon was exercised.
-This evidence does not claim end-to-end execution of the new revision on the server;
-a server upgrade or installation is not required for this compatibility assessment.
+Cover the complete change against its base before completion (for example, use
+the tool's `--base-ref` selector for committed work). Inspect findings and required
+policies; do not add exemptions or alter thresholds merely to pass.
+
+## Live-host qualification boundary
+
+Keep three evidence classes separate: ordinary offline development/tests, clean
+install/release-artifact qualification, and live production-host qualification.
+A fixture captured on production proves only the captured command/format, not
+execution of the current application revision there.
+
+The recorded read-only M6 inspection on 2026-09-27 established Fail2Ban 1.0.2
+status compatibility. The migrated M6 still runs the December 2025 standalone
+application; the reviewed packaged application has not been production-deployed.
+This is the current recorded deployment boundary, not a fresh host inspection.
+
+Production inspection is read-only by default. No development/test command should
+modify Fail2Ban. An explicit reviewed app-owned GeoIP update may be exercised only
+when intentionally qualifying that operator action. Production deployment and
+legacy-command cutover remain a separate final gate; offline tests and successful
+artifact builds cannot substitute for it.

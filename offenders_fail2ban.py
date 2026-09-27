@@ -97,7 +97,7 @@ class JailStatus:
 
 
 def _run(cmd: List[str]) -> str:
-    """Require a successful read-only command, preserving #14 failure details."""
+    """Require a successful read-only command, preserving bounded-runner failure details."""
     result = run_host_command(cmd, timeout=8, sudo=True)
     if result.failure is not None:
         raise Fail2BanCommandError(cmd, result)
