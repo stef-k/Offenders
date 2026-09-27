@@ -168,3 +168,74 @@ def get_jail_status(jail: str) -> JailStatus:
         except (Fail2BanCommandError, Fail2BanParseError) as error:
             errors[name] = error
     return replace(status, **settings, setting_errors=errors)
+
+
+# Bound source evidence independently of the subprocess timeout.
+SOURCE_TEXT_LIMIT = 65536
+
+
+@dataclass(frozen=True)
+class JailSources:
+    """Independent optional runtime source facts with original failure details."""
+
+    name: str
+    logpaths: tuple[str, ...] | None
+    journalmatch: str | None
+    journal_units: tuple[str, ...]
+    errors: dict[str, Fail2BanCommandError | Fail2BanParseError] = field(default_factory=dict)
+
+
+def journal_units(expression: str) -> tuple[str, ...]:
+    """Extract whole literal unit tokens, never prefixes or interpolation."""
+    return tuple(sorted(set(token.split("=", 1)[1] for token in expression.split()
+                            if re.fullmatch(r"_SYSTEMD_UNIT=[A-Za-z0-9_.@:\\-]+", token))))
+
+
+def parse_logpaths(output: str) -> tuple[str, ...]:
+    """Accept the 1.0.2 beautifier's empty sentinel or concrete tree entries."""
+    if len(output) > SOURCE_TEXT_LIMIT:
+        raise Fail2BanParseError("Runtime logpath output exceeds source bound")
+    lines = output.strip().splitlines()
+    if lines == ["No file is currently monitored"]:
+        return ()
+    if len(lines) < 2 or lines[0] != "Current monitored log file(s):":
+        raise Fail2BanParseError("Invalid runtime logpath header or missing entries")
+    paths = []
+    for line in lines[1:]:
+        match = re.fullmatch(r"(?:\|- |`- |\\- )(/[^\r\n]+)", line)
+        if not match:
+            raise Fail2BanParseError("Invalid runtime logpath entry")
+        paths.append(match[1])
+    return tuple(sorted(set(paths)))
+
+
+def parse_journalmatch(output: str) -> str:
+    """Preserve a bounded raw expression, distinguishing empty from malformed."""
+    if len(output) > SOURCE_TEXT_LIMIT:
+        raise Fail2BanParseError("Runtime journalmatch output exceeds source bound")
+    value = output.strip()
+    if value == "No journal match filter set":
+        return ""
+    header = "Current match filter:\n"
+    if not value.startswith(header) or not value[len(header):].strip():
+        raise Fail2BanParseError("Invalid runtime journalmatch output")
+    expression = value[len(header):].strip()
+    if any(token != "+" and not re.fullmatch(r"[A-Z_][A-Z_0-9]*=\S+", token)
+           for token in expression.split()):
+        raise Fail2BanParseError("Invalid runtime journalmatch expression")
+    if not any("=" in token for token in expression.split()):
+        raise Fail2BanParseError("Missing runtime journalmatch terms")
+    return expression
+
+
+def get_jail_sources(jail: str) -> JailSources:
+    """Query only stable source commands through the existing eight-second seam."""
+    values = {"logpath": None, "journalmatch": None}
+    errors = {}
+    for name, parser in (("logpath", parse_logpaths), ("journalmatch", parse_journalmatch)):
+        try:
+            values[name] = parser(_run(["fail2ban-client", "get", jail, name]))
+        except (Fail2BanCommandError, Fail2BanParseError) as error:
+            errors[name] = error
+    return JailSources(jail, values["logpath"], values["journalmatch"],
+                       journal_units(values["journalmatch"] or ""), errors)
