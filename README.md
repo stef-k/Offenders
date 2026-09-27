@@ -54,11 +54,11 @@ The repository documentation is available now. The
 published location; repository Pages setup and live-site qualification are pending.
 
 - [Documentation home](docs/README.md)
-- [Installation, upgrades, permissions, and migration](docs/installation.md)
-- [Usage and authoritative controls](docs/usage.md)
-- [GeoIP and ASN enrichment](docs/geoip.md)
-- [Coverage and validation](docs/coverage.md)
-- [Troubleshooting and source configuration](docs/troubleshooting.md)
+- [Installation, upgrades, permissions, and migration](https://stef-k.github.io/Offenders/installation.html)
+- [Usage and authoritative controls](https://stef-k.github.io/Offenders/usage.html)
+- [GeoIP and ASN enrichment](https://stef-k.github.io/Offenders/geoip.html)
+- [Coverage and validation](https://stef-k.github.io/Offenders/coverage.html)
+- [Troubleshooting and source configuration](https://stef-k.github.io/Offenders/troubleshooting.html)
 
 [Repository](https://github.com/stef-k/Offenders) ·
 [Releases](https://github.com/stef-k/Offenders/releases) ·
