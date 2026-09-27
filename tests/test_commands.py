@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import offenders
+import offenders_fail2ban as offenders
 
 
 class CommandTests(unittest.TestCase):
