@@ -239,6 +239,17 @@ Global:
   - in **row** mode: copies the entire row (tab-separated)
   - in **cell** mode: copies the current cell
 
+Jail detail:
+
+- Focus **Active bans per jail**, move to a jail row, and press `Enter` to open it.
+- `Esc` or `q` — return to the jail table, preserving the jail selection when active.
+- `r` and `p` remain available in detail. Successful refreshes update the open jail;
+  failed refreshes retain its last successful status.
+
+Jail counters/settings are **current live status**, not period-filtered totals.
+The displayed period is the historical context. Opening or navigating detail
+reuses the latest successful report and performs no additional collection.
+
 Network tools (on selected IP):
 
 - `w` — WHOIS (requires `whois`)
