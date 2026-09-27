@@ -1,4 +1,4 @@
-#!usr/bin/python
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import datetime as dt
@@ -877,5 +877,10 @@ class OffendersApp(App):
             last_bans.add_row("", "", "", "(no ban lines in selected period)")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Launch the dashboard from the installed command or source checkout."""
     OffendersApp().run()
+
+
+if __name__ == "__main__":
+    main()

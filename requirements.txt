@@ -1,1 +1,2 @@
-﻿textual
+# Compatibility installation path; pyproject.toml owns dependency bounds.
+.

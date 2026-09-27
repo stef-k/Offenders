@@ -16,8 +16,8 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 
 ## Requirements
 
-- Python **3.10+**
-- Fail2Ban installed and logging to:
+- Python **3.12+**; the supported server/development baseline is Ubuntu **24.04 LTS** with Python **3.12**.
+- Fail2Ban **1.1.x** installed separately and logging to:
   - `/var/log/fail2ban.log` (plus rotated logs)
 - Ability to run `fail2ban-client` (the app uses `sudo fail2ban-client ...`)
 
@@ -25,22 +25,29 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 
 This project depends on:
 
-- `textual`
+- `textual>=8.2.8,<9` (the supported Textual 8 release line)
 - (optional) `geoip2` — only if you want Python-based MMDB lookups; otherwise the app falls back to `mmdblookup` if present.
 
-Install from `requirements.txt`:
+From the repository root, install into a virtual environment (on Ubuntu, install
+`python3-venv` first if needed). `pyproject.toml` owns the dependency bounds:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 Optional:
 
 ```bash
-pip install geoip2
+python -m pip install -e ".[geoip]"
 ```
+
+The optional extra bounds `geoip2` to `>=5.3,<6`. A base install does not require
+GeoIP Python packages or database downloads. For a non-editable installation,
+use `python -m pip install .`; `python -m pip install -r requirements.txt` remains
+a compatible alternative. Editable installation keeps changes to the documented
+configuration constants effective when running the installed command.
 
 ## System tools (optional but recommended)
 
@@ -172,9 +179,16 @@ which fail2ban-client
 
 ## Run
 
+Activate the environment used for installation, then run:
+
 ```bash
-python3 offenders.py
+source .venv/bin/activate
+offenders
 ```
+
+From the checkout, `python offenders.py` and `./offenders.py` also work with that
+environment active. Run as the user with log-read and Fail2Ban permissions; the
+application still invokes `sudo fail2ban-client` for jail status.
 
 ## Key bindings
 
@@ -213,7 +227,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Development tests
 
-After installing `requirements.txt` in your virtual environment, run:
+After installing the project in your virtual environment, run:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -225,5 +239,21 @@ network access, or GeoIP databases. It covers ban recognition, IP normalization
 and local-address filtering, numeric gzip rotation ordering, inclusive calendar
 lookback boundaries (`0` includes all dates), and jail/table parsing.
 
-These tests characterize parsing only; they do not qualify the interactive UI,
-a live Fail2Ban installation, or runtime/dependency compatibility across versions.
+The suite also mounts the real Textual dashboard with a fixture report, checks
+table rendering and cursor-mode switching, and quits through the keyboard binding.
+It does not require a running Fail2Ban daemon.
+
+### Runtime qualification
+
+Fresh installation and the offline suite were validated on Ubuntu 24.04 with
+Python 3.12.3 and Textual 8.2.8. The jail status fields used by Offenders
+(`Jail list` and `Currently banned`) match Fail2Ban 1.1.0 client formatting.
+Existing UI compatibility fallbacks remain because the parsing tests from #12
+do not protect those UI paths.
+
+Live server qualification still requires running `fail2ban-client --version`,
+checking `sudo fail2ban-client status` and `sudo fail2ban-client status <jail>`,
+and launching `offenders` in a terminal with real logs. Verify that the dashboard
+shows the same jails and active-ban counts, refreshes with `r`, and exits with `q`.
+Offline tests do not establish server permissions, real log access, or live
+Fail2Ban integration.
