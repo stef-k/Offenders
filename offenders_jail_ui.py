@@ -4,7 +4,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Static
+from textual.widgets import DataTable, Footer, Static
 
 from offenders_report import Report
 
@@ -34,26 +34,79 @@ def jail_details(jail: str, report: Report) -> Text:
             ("Filter", status.filter_name),
         ):
             lines.append(f"{label}: {'Unavailable' if value is None else value}")
+    lines.extend(["", "Current banned IPs (live Fail2Ban snapshot)"])
+    if status is None:
+        lines.append("Unavailable — jail not active in latest successful refresh")
+    else:
+        lines.extend(status.banned_ips or ("(none)",))
     return Text("\n".join(lines))
 
 
 class JailDetailScreen(Screen[None]):
     """Retain jail identity and navigation while accepting successful snapshots."""
 
-    BINDINGS = [("escape", "dismiss", "Back"), ("q", "dismiss", "Back")]
+    BINDINGS = [
+        ("escape", "dismiss", "Back"), ("q", "dismiss", "Back"),
+        ("e", "expand_history", "Expand history"),
+    ]
+    DEFAULT_CSS = """
+    JailDetailScreen #jail-history { height: 12; }
+    """
+
+    # None means all events in the committed report period.
+    HISTORY_LIMITS = (10, 50, 100, None)
 
     def __init__(self, jail: str, report: Report) -> None:
         super().__init__()
         self.jail = jail
         self.report = report
+        self.history_level = 0
 
     def compose(self) -> ComposeResult:
         """Mount the scroll surface once so refresh does not replace navigation."""
         with VerticalScroll():
             yield Static(jail_details(self.jail, self.report), id="jail-details")
+            yield Static("", id="jail-history-summary")
+            yield DataTable(id="jail-history", cursor_type="row")
         yield Footer()
+
+    def on_mount(self) -> None:
+        """Create the history columns once and project the initial snapshot."""
+        self.query_one("#jail-history", DataTable).add_columns("Date", "Time", "IP")
+        self._render_history()
+
+    def action_expand_history(self) -> None:
+        """Expand only this screen's presentation without collecting any data."""
+        self.history_level = min(self.history_level + 1, len(self.HISTORY_LIMITS) - 1)
+        self._render_history()
+
+    def _render_history(self) -> None:
+        """Project normalized events, retaining duplicates and stable timestamp ties."""
+        events = sorted(
+            (event for event in self.report.events if event.jail == self.jail),
+            key=lambda event: event.timestamp, reverse=True,
+        )
+        visible = events[:self.HISTORY_LIMITS[self.history_level]]
+        summary = (
+            f"Historical bans in {self.report.period}: showing {len(visible)} "
+            f"of {len(events)} (newest first)"
+        )
+        if not events:
+            summary += "\nNo historical bans for this jail in the selected period."
+        self.query_one("#jail-history-summary", Static).update(Text(summary))
+        table = self.query_one("#jail-history", DataTable)
+        cursor, scroll_x, scroll_y = table.cursor_coordinate, table.scroll_x, table.scroll_y
+        table.clear()
+        for event in visible:
+            table.add_row(
+                event.timestamp.strftime("%Y-%m-%d"),
+                event.timestamp.strftime("%H:%M:%S"), event.ip,
+            )
+        table.move_cursor(row=min(cursor.row, max(0, len(visible) - 1)), scroll=False)
+        table.scroll_to(x=scroll_x, y=scroll_y, animate=False, force=True)
 
     def update_report(self, report: Report) -> None:
         """Refresh literal status in place without changing focus or scroll."""
         self.report = report
         self.query_one("#jail-details", Static).update(jail_details(self.jail, report))
+        self._render_history()
