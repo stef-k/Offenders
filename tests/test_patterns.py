@@ -39,7 +39,13 @@ class PatternTests(unittest.TestCase):
     """Recognition is measured at the public projection seam, not regex helpers."""
 
     def test_explicit_catalog_and_noise(self):
+        # Exact Fail2Ban 1.0.2 vsftpd fixture with PAM in the program envelope.
+        pam_envelope = ("Feb 6 12:02:29 server vsftpd(pam_unix)[15522]: authentication failure; "
+                        "logname= uid=0 euid=0 tty= ruser= rhost=64.168.103.1 user=user1")
         cases = [
+            ("vsftpd", pam_envelope, "vsftpd_login_failure", "64.168.103.1"),
+            ("ssh", pam_envelope, None, None),
+            ("unknown", pam_envelope, None, None),
             ("ssh", "sshd[1]: Failed password for alice from 8.8.8.8 port 22 ssh2", "ssh_failed_password", "8.8.8.8"),
             ("ssh", "Failed password for invalid user bob from ::ffff:8.8.8.8 port 22", "ssh_failed_password", "8.8.8.8"),
             ("ssh", "Invalid user guest from 2001:4860::1 port 22", "ssh_invalid_user", "2001:4860::1"),

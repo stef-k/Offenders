@@ -235,7 +235,7 @@ def _auth(family: str, body: str):
         match = re.match(r'(?:\[pid \d+\] )?\[[^\]]*\] FAIL LOGIN: Client "(?P<ip>[^"]+)"', body)
         if not match:
             match = re.match(
-                r"(?:\(pam_unix\)|pam_unix\(vsftpd:auth\):) "
+                r"(?:(?:\(pam_unix\)|pam_unix\(vsftpd:auth\):) )?"
                 r"authentication failure;.*\srhost=(?P<ip>\S+)", body)
         if match:
             return "vsftpd_login_failure", _ip(match["ip"])

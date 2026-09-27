@@ -30,3 +30,5 @@ The Apache nested-client negative example and PAM `ruser=rhost=...` case protect
 source-field attribution. Localized Pure-FTPd messages deliberately remain
 unrecognized. Fixtures are embedded in the compact public-projection table so
 expected family, kind, and source IP stay next to the representative line.
+The vsftpd PAM program-envelope regression preserves the exact upstream 1.0.2
+line, including its original address, and verifies source-family gating.
