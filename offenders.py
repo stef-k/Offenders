@@ -6,14 +6,18 @@ import datetime as dt
 import ipaddress
 import shutil
 import subprocess
+import threading
 from typing import List, Optional, Tuple
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
+from textual.worker import Worker, get_current_worker
+from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
+from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
 from offenders_report import LOOKBACK_DAYS, Report, _parse_ban_line_for_table, build_report
 
 # Do not set lower than 30 seconds as geoip/asn lookups may be slow
@@ -134,11 +138,18 @@ class OffendersApp(App):
         ("d", "rdns", "RDNS"),
     ]
 
+    def __init__(self) -> None:
+        """Track scheduled work and actual thread lifetime separately on cancellation."""
+        super().__init__()
+        self._refresh_worker: Optional[Worker] = None
+        self._build_lock = threading.Lock()
+        self._last_success: Optional[dt.datetime] = None
+
     def compose(self) -> ComposeResult:
         yield Header()
 
         with Container(id="body"):
-            yield SummaryBar(id="summary")
+            yield SummaryBar("Unavailable: awaiting first successful refresh", id="summary")
 
             yield Static("🔥 Top banned IPs", classes="section-title")
             yield DataTable(id="offenders")
@@ -179,15 +190,69 @@ class OffendersApp(App):
         self.set_interval(CHECK_INTERVAL_SECONDS, self.refresh_report)
 
     def action_refresh(self) -> None:
-        self.refresh_report()
+        """Manual refresh shares the timer gate but reports skipped requests."""
+        self.refresh_report(manual=True)
+
+    def refresh_report(self, *, manual: bool = False) -> None:
+        """Schedule at most one build; all callers run on the UI thread."""
+        # Cancellation before task startup may leave Textual's state PENDING.
+        pending = (
+            self._refresh_worker is not None
+            and not self._refresh_worker.is_finished
+            and not self._refresh_worker.is_cancelled
+        )
+        if pending or self._build_lock.locked():
+            if manual:
+                self.notify("Refresh already in progress", timeout=2.0)
+            return
+        self._refresh_worker = self._collect_report()
 
     @work(thread=True)
-    def refresh_report(self) -> None:
-        try:
-            r = build_report()
-            self.call_from_thread(self._apply_report, r, None)
-        except Exception as ex:
-            self.call_from_thread(self._apply_report, None, str(ex))
+    def _collect_report(self) -> None:
+        """Keep cancellation from releasing the gate while a thread still builds."""
+        worker = get_current_worker()
+        with self._build_lock:
+            if worker.is_cancelled:
+                return
+            try:
+                report = build_report()
+            except Exception as error:
+                if not worker.is_cancelled:
+                    self.call_from_thread(self._finish_refresh, worker, None, error)
+            else:
+                if not worker.is_cancelled:
+                    self.call_from_thread(self._finish_refresh, worker, report, None)
+
+    def _finish_refresh(
+        self, worker: Worker, report: Optional[Report], error: Optional[Exception]
+    ) -> None:
+        """Discard cancelled completions on the UI thread before touching widgets."""
+        if worker is not self._refresh_worker or worker.is_cancelled:
+            return
+        if error is not None:
+            self._show_refresh_error(error)
+        else:
+            assert report is not None
+            self._apply_report(report)
+
+    def _show_refresh_error(self, error: Exception) -> None:
+        """Render a bounded plain-text failure while retaining trustworthy tables."""
+        category = "collection-failure"
+        if isinstance(error, Fail2BanCommandError):
+            category = error.result.failure.value
+        elif isinstance(error, Fail2BanParseError):
+            category = "parse-failure"
+        detail = " ".join(str(error).split())
+        detail = "".join(char for char in detail if char.isprintable())
+        if len(detail) > 160:
+            detail = detail[:159] + "…"
+        if self._last_success is None:
+            state = "Unavailable: no successful refresh"
+        else:
+            state = f"Showing last successful refresh {self._last_success:%Y-%m-%d %H:%M:%S}"
+        self.query_one("#summary", SummaryBar).update(Text(
+            f"Degraded {dt.datetime.now():%Y-%m-%d %H:%M:%S} | {category}: {detail} | {state}"
+        ))
 
     def _copy_text(self, text: str) -> None:
         # Clipboard support depends on terminal/OS; fallback prints.
@@ -405,7 +470,8 @@ class OffendersApp(App):
         else:
             table.cursor_type = "row"
 
-    def _apply_report(self, r: Optional[Report], error: Optional[str]) -> None:
+    def _apply_report(self, r: Report) -> None:
+        """Replace all report widgets together in one UI callback after success."""
         summary = self.query_one("#summary", SummaryBar)
         offenders = self.query_one("#offenders", DataTable)
         jails_line = self.query_one("#jails-line", Static)
@@ -416,16 +482,7 @@ class OffendersApp(App):
         bans_per_jail.clear()
         last_bans.clear()
 
-        if error:
-            now = dt.datetime.now()
-            summary.update(f"❌ {now:%Y-%m-%d %H:%M:%S} | {error}")
-            jails_line.update("")
-            offenders.add_row("—", "—", "—", "—", "—")
-            bans_per_jail.add_row("—", "—")
-            last_bans.add_row("", "", "", "")
-            return
-
-        assert r is not None
+        self._last_success = r.generated_at
 
         summary.update_from_report(r)
         self.sub_title = f"Updated at: {r.generated_at:%Y-%m-%d %H:%M:%S}"
