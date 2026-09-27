@@ -428,6 +428,21 @@ records from recognized records excluded by the UTC window. Output ordering uses
 source/family/signature/time basis and backend record identities, not text hashes.
 Groups keep at most three examples of 512 UTF-8 bytes each; source/group/event
 limitations retain at most 32 details of 300 bytes each, marking caps explicitly.
+`offenders_findings.build_findings(pattern_inventory, coverage_inventory)` purely
+joins #31 patterns and #29 coverage retaining the exact same #28 source inventory
+object; separately acquired snapshots raise `ValueError`. Resolved file aliases
+join once per canonical source/family. Known active service states, at least
+three recognized records, and at least one global source IP gate candidates.
+Exact pattern/filter compatibility narrows family/source coverage; source
+monitoring alone does not prove event/filter matching. Compatible enabled jails
+suppress ordinary candidates; only at least 10 records from two global IPs or
+20 records from one global IP produce an enabled tuning question. Unknown running
+filter relevance blocks disabled/custom candidates. Disabled definitions remain
+validation targets, and custom gaps require an explicit complete-enough coverage
+negative. Partial positive history can qualify with its limitations retained.
+Every group receives one frozen candidate, suppression, or insufficient-evidence
+decision with its original group and contributing coverage facts. Findings are a
+subset of those decisions, with no scores, UI, regex validation, or mutation.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
