@@ -20,8 +20,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             total_bans=2,
             ban_lines=[],
             top_offenders=[offenders.Offender("8.8.8.8", 2, "Unknown", "", "No ASN")],
-            jail_list=["sshd"],
-            bans_per_jail=[("sshd", 2)],
+            jail_statuses=[offenders.JailStatus("sshd", 0, 0, 2, 2, ("8.8.8.8",))],
             last_10_bans=["2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"],
         )
         with patch.object(offenders, "build_report", return_value=report):

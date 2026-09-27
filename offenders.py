@@ -5,14 +5,13 @@ import datetime as dt
 import glob
 import gzip
 import ipaddress
-import logging
 import math
 import os
 import re
 import shutil
 import subprocess
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Iterable, List, Optional, Tuple
 
@@ -70,9 +69,21 @@ class Report:
     total_bans: int
     ban_lines: List[str]  # filtered Ban lines (selected period)
     top_offenders: List[Offender]
-    jail_list: List[str]
-    bans_per_jail: List[Tuple[str, int]]  # (jail, currently banned)
+    jail_statuses: List[JailStatus]
     last_10_bans: List[str]
+
+    @property
+    def jail_list(self) -> List[str]:
+        """Keep the daemon's jail order for the dashboard."""
+        return [status.name for status in self.jail_statuses]
+
+    @property
+    def bans_per_jail(self) -> List[Tuple[str, int]]:
+        """Retain the dashboard's descending ban-count presentation."""
+        return sorted(
+            [(status.name, status.currently_banned) for status in self.jail_statuses],
+            key=lambda item: item[1], reverse=True,
+        )
 
 
 # =========================
@@ -358,31 +369,112 @@ def run_host_command(
     return CommandResult(process.returncode, process.stdout, process.stderr, failure)
 
 
+class Fail2BanCommandError(RuntimeError):
+    """Expose the original bounded-runner result without parsing failed stdout."""
+
+    def __init__(self, command: List[str], result: CommandResult):
+        self.command = tuple(command)
+        self.result = result
+        super().__init__(
+            f"Fail2Ban {command!r}: {result.failure.value} "
+            f"(exit={result.returncode}): {result.stderr or result.detail or result.stdout}"
+        )
+
+
+class Fail2BanParseError(ValueError):
+    """Successful command output does not satisfy the required status contract."""
+
+
+@dataclass(frozen=True)
+class JailStatus:
+    """Core status plus optional settings; None means unavailable, never zero."""
+
+    name: str
+    currently_failed: int
+    total_failed: int
+    currently_banned: int
+    total_banned: int
+    banned_ips: Tuple[str, ...]
+    bantime: Optional[int] = None
+    findtime: Optional[int] = None
+    maxretry: Optional[int] = None
+    backend: Optional[str] = None
+    filter_name: Optional[str] = None
+    setting_errors: dict[str, Fail2BanCommandError | Fail2BanParseError] = field(default_factory=dict)
+
+
 def _run(cmd: List[str]) -> str:
-    """Read successful Fail2Ban stdout; log failures for diagnosis."""
+    """Require a successful read-only command, preserving #14 failure details."""
     result = run_host_command(cmd, timeout=8, sudo=True)
     if result.failure is not None:
-        logging.getLogger(__name__).warning(
-            "Host command %r failed: %s (exit=%s): %s",
-            cmd, result.failure.value, result.returncode,
-            result.stderr or result.detail or result.stdout,
-        )
-        return ""
+        raise Fail2BanCommandError(cmd, result)
     return result.stdout
 
 
+def _status_field(output: str, label: str) -> str:
+    """Read exactly one line-local field, including a legitimately empty value."""
+    matches = re.findall(
+        rf"^[ \t|`-]*{re.escape(label)}:[ \t]*(.*)$", output, re.MULTILINE
+    )
+    if len(matches) != 1:
+        raise Fail2BanParseError(f"Missing or duplicate Fail2Ban field: {label}")
+    return matches[0].strip()
+
+
+def _status_count(output: str, label: str) -> int:
+    """Required status counters must be nonnegative decimal integers."""
+    value = _status_field(output, label)
+    if not re.fullmatch(r"[0-9]+", value):
+        raise Fail2BanParseError(f"Invalid Fail2Ban counter: {label}")
+    return int(value)
+
+
+def parse_jail_list(output: str) -> List[str]:
+    """Validate the global status, preserving order and valid zero jails."""
+    count = _status_count(output, "Number of jail")
+    value = _status_field(output, "Jail list")
+    jails = [name.strip() for name in value.split(",")] if value else []
+    if len(jails) != count or any(not name for name in jails) or len(set(jails)) != count:
+        raise Fail2BanParseError("Inconsistent Fail2Ban jail list")
+    return jails
+
+
+def parse_jail_status(output: str, jail: str) -> JailStatus:
+    """Parse the shared 1.0.2/1.1.x status fields without a live daemon."""
+    if _status_field(output, "Status for the jail") != jail:
+        raise Fail2BanParseError(f"Unexpected Fail2Ban jail identity: {jail}")
+    counts = [_status_count(output, label) for label in (
+        "Currently failed", "Total failed", "Currently banned", "Total banned"
+    )]
+    try:
+        ips = tuple(ipaddress.ip_address(ip).compressed for ip in
+                    _status_field(output, "Banned IP list").split())
+    except ValueError as error:
+        raise Fail2BanParseError(f"Invalid banned IP list for {jail}") from error
+    # Counters and IPs are read separately by the daemon; do not require an
+    # atomic snapshot or reject legitimate concurrent ban/unban activity.
+    return JailStatus(jail, *counts, ips)
+
+
 def get_jail_list() -> List[str]:
-    out = _run(["fail2ban-client", "status"])
-    m = re.search(r"Jail list:\s*(.*)", out)
-    if not m:
-        return []
-    return [j.strip() for j in m.group(1).split(",") if j.strip()]
+    """Collect required global status or propagate command/parse failure."""
+    return parse_jail_list(_run(["fail2ban-client", "status"]))
 
 
-def get_currently_banned_for_jail(jail: str) -> int:
-    out = _run(["fail2ban-client", "status", jail])
-    m = re.search(r"Currently banned:\s*(\d+)", out)
-    return int(m.group(1)) if m else 0
+def get_jail_status(jail: str) -> JailStatus:
+    """Collect core status and best-effort 1.0.2 numeric settings, read-only."""
+    status = parse_jail_status(_run(["fail2ban-client", "status", jail]), jail)
+    settings = {}
+    errors = {}
+    for name in ("bantime", "findtime", "maxretry"):
+        try:
+            value = _run(["fail2ban-client", "get", jail, name]).strip()
+            if not re.fullmatch(r"-?[0-9]+", value):
+                raise Fail2BanParseError(f"Invalid Fail2Ban setting: {jail} {name}")
+            settings[name] = int(value)
+        except (Fail2BanCommandError, Fail2BanParseError) as error:
+            errors[name] = error
+    return replace(status, **settings, setting_errors=errors)
 
 
 # =========================
@@ -402,18 +494,16 @@ def build_report(
 
     ban_lines, cutoff_date = collect_ban_lines(lookback_days)
 
+    jail_statuses = [get_jail_status(jail) for jail in get_jail_list()]
+
     if not ban_lines:
-        jails = get_jail_list()
-        bans_per = [(j, get_currently_banned_for_jail(j)) for j in jails]
-        bans_per.sort(key=lambda x: x[1], reverse=True)
         return Report(
             generated_at=dt.datetime.now(),
             cutoff_date=cutoff_date,
             total_bans=0,
             ban_lines=[],
             top_offenders=[],
-            jail_list=jails,
-            bans_per_jail=bans_per,
+            jail_statuses=jail_statuses,
             last_10_bans=[],
         )
 
@@ -437,10 +527,6 @@ def build_report(
             )
         )
 
-    jails = get_jail_list()
-    bans_per = [(j, get_currently_banned_for_jail(j)) for j in jails]
-    bans_per.sort(key=lambda x: x[1], reverse=True)
-
     last10 = ban_lines[-10:] if len(ban_lines) >= 10 else ban_lines[:]
 
     return Report(
@@ -449,8 +535,7 @@ def build_report(
         total_bans=len(ban_lines),
         ban_lines=ban_lines,
         top_offenders=offenders,
-        jail_list=jails,
-        bans_per_jail=bans_per,
+        jail_statuses=jail_statuses,
         last_10_bans=last10,
     )
 
