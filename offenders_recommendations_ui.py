@@ -11,6 +11,7 @@ from textual.worker import get_current_worker
 from textual.widgets import DataTable, Footer, Static
 
 from offenders_validation_ui import ValidationScreen
+from offenders_candidate_ui import CustomCandidateScreen
 from offenders_host import discover_host_inventory
 from offenders_sources import discover_log_sources
 from offenders_coverage import discover_coverage
@@ -206,7 +207,8 @@ class RecommendationsScreen(Screen):
         if self.inventory is None or not self.inventory.findings:
             return
         decision = self.inventory.findings[self.query_one(DataTable).cursor_row]
-        self.app.push_screen(ValidationScreen(self.inventory, decision))
+        screen = CustomCandidateScreen if decision.classification == "custom_gap_candidate" else ValidationScreen
+        self.app.push_screen(screen(self.inventory, decision))
 
     def action_close(self) -> None:
         """Stop result delivery immediately, before asynchronous removal finishes."""

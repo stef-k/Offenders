@@ -80,15 +80,5 @@ class ValidationScreenTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press('v', 'enter')
                     await app.workers.wait_for_complete()
                     self.assertIn('Validation unavailable', str(app.screen.query_one('#validation-detail', Static).content))
-                    await pilot.press('q', 'q')
-                    analysis.return_value = inventory(custom=True)
-                    await pilot.press('a')
-                    await app.workers.wait_for_complete()
-                    await pilot.press('v')
-                    self.assertIn(ui.NO_TARGET, str(app.screen.query_one('#validation-detail', Static).content))
-                    calls = run.call_count
-                    await pilot.press('v', 'enter')
-                    self.assertEqual(run.call_count, calls)
-                    await pilot.press('q')
                 finally:
                     release.set()
