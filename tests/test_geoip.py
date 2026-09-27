@@ -195,6 +195,16 @@ class GeoIPTests(unittest.TestCase):
             self.assertEqual(health.resolved_path, str(second))
             self.assertEqual(service.lookup("8.8.8.8").country.value, "Greece")
 
+    def test_broken_managed_generation_retains_health_and_legacy_fallback(self):
+        """A cyclic current link must not abort report enrichment."""
+        (self.app / "current").symlink_to("current")
+        for kind in ("country", "asn"):
+            self.write(self.legacy, kind, "Greece")
+        health = self.geo.refresh()
+        self.assertTrue(all(item.fallback for item in health.values()))
+        self.assertTrue(all(item.candidates[0].state == "unreadable" for item in health.values()))
+        self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "Greece")
+
     def test_corrupt_data_section_is_unhealthy_and_allows_fallback(self):
         preferred = self.write(self.app, "country")
         self.write(self.legacy, "country", "France")

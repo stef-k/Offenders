@@ -142,10 +142,10 @@ class LifecycleTests(unittest.TestCase):
 
     def test_read_only_status_xdg_policy_due_and_writer_refusal(self):
         with patch.dict("os.environ", XDG_DATA_HOME=""), patch.object(Path, "home", return_value=self.root):
-            self.assertEqual(geo.data_root(), self.root / ".local/share/offenders/geoip")
+            self.assertEqual(geo.resolve_data_root(), self.root / ".local/share/offenders/geoip")
         with patch.dict("os.environ", XDG_DATA_HOME=str(self.root)):
-            self.assertEqual(geo.data_root(), self.root / "offenders/geoip")
-        with patch.object(cli, "data_root", return_value=self.root), \
+            self.assertEqual(geo.resolve_data_root(), self.root / "offenders/geoip")
+        with patch.object(cli, "resolve_data_root", return_value=self.root), \
              patch("urllib.request.OpenerDirector.open", side_effect=AssertionError("network")), \
              patch("sys.stdout", new_callable=io.StringIO) as output:
             self.assertEqual(cli.main(["status"]), 0)
@@ -166,7 +166,7 @@ class LifecycleTests(unittest.TestCase):
                 with self.assertRaisesRegex(updater.UpdateError, "lock"):
                     self.run_update()
             self.assertEqual(len(self.urls), 2)
-        with patch.object(cli, "data_root", return_value=self.root), \
+        with patch.object(cli, "resolve_data_root", return_value=self.root), \
              patch.object(cli, "update", side_effect=updater.UpdateError("offline")), \
              patch("sys.stderr", new_callable=io.StringIO) as error:
             self.assertEqual(cli.main(["update"]), 1)

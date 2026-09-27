@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from offenders_geoip import data_root, validate_database
+from offenders_geoip import resolve_data_root, validate_database
 
 BASE_URL = "https://download.db-ip.com/free"
 TIMEOUT = 30  # Seconds for connection and each blocking socket read.
@@ -85,7 +85,7 @@ def _write_state(root, state):
 
 def set_auto(enabled, root=None):
     """Persist explicit opt-in without triggering a network check."""
-    root = root if root is not None else data_root()
+    root = root if root is not None else resolve_data_root()
     with writer_lock(root):
         state = read_state(root)
         state["auto"] = bool(enabled)
@@ -170,7 +170,7 @@ def _activate(root, stage, month):
 
 def update(root=None, *, opener=fetch, now=None, automatic=False):
     """Update explicitly, or atomically claim a due automatic check for #18."""
-    root = (root if root is not None else data_root()).absolute()
+    root = (root if root is not None else resolve_data_root()).absolute()
     now = time.time() if now is None else now
     with writer_lock(root):
         state = read_state(root)

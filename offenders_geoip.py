@@ -1,7 +1,7 @@
 """Read-only DB-IP source selection, reusable readers, and bounded enrichment.
 
-Stable filenames in the XDG data directory take precedence independently over
-legacy system files. Refresh checks local generations; nothing downloads data.
+Managed generations (or existing flat XDG files) take precedence over legacy
+system files. Refresh checks local generations; nothing downloads data.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ GEO_ASN_DB = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
 CACHE_SIZE = 2048  # Per database; includes healthy negative lookups.
 
 
-def data_root() -> Path:
+def resolve_data_root() -> Path:
     """Resolve the shared root without creating it."""
     return Path(os.environ.get("XDG_DATA_HOME") or
                 Path.home() / ".local/share") / "offenders/geoip"
@@ -255,7 +255,7 @@ class GeoIP:
         if cache_size < 1:
             raise ValueError("cache_size must be positive")
         if data_root is None:
-            data_root = globals()["data_root"]()
+            data_root = resolve_data_root()
         self.data_root = data_root
         self._lock = RLock()
         self._databases = {
@@ -274,7 +274,11 @@ class GeoIP:
         with self._lock:
             # Resolve current once so an activation cannot mix candidate months.
             current = self.data_root / "current"
-            managed = current.resolve() if current.is_symlink() else self.data_root
+            try:
+                managed = current.resolve() if current.is_symlink() else self.data_root
+            except (OSError, RuntimeError):
+                # Let per-candidate inspection retain diagnostics and legacy fallback.
+                managed = current
             for kind, database in self._databases.items():
                 database.paths = (managed / f"dbip-{kind}-lite.mmdb", database.paths[1])
                 database.refresh(backend, error)

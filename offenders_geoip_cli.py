@@ -2,9 +2,10 @@
 import argparse
 from dataclasses import asdict
 import json
+from pathlib import Path
 import sys
 
-from offenders_geoip import GeoIP, data_root
+from offenders_geoip import GeoIP, resolve_data_root
 from offenders_geoip_update import UpdateError, read_state, set_auto, update
 
 
@@ -18,13 +19,16 @@ def main(argv=None):
     policy.add_argument("policy", choices=("on", "off"))
     args = parser.parse_args(argv)
     try:
-        root = data_root()
+        root = resolve_data_root()
         if args.command == "status":
             service = GeoIP(root)
             try:
                 health = service.refresh()
-                current = root / "current"
-                generation = current.resolve().name if current.is_symlink() else None
+                active_paths = [Path(item.resolved_path) for value in health.values()
+                                for item in value.candidates
+                                if item.active and item.source == "app-managed"]
+                generation = next((path.parent.name for path in active_paths
+                                   if path.parent.parent == root.absolute() / "generations"), None)
                 state = read_state(root)
                 print(json.dumps({
                     "generation": generation,
