@@ -51,9 +51,8 @@ match never establishes filter safety. See [Coverage](https://stef-k.github.io/O
 
 ## Documentation
 
-The repository documentation is available now. The
-[Pages documentation site](https://stef-k.github.io/Offenders/) is the intended
-published location; repository Pages setup and live-site qualification are pending.
+The repository documentation is available now on the
+[Pages documentation site](https://stef-k.github.io/Offenders/).
 
 - [Documentation home](https://stef-k.github.io/Offenders/)
 - [Installation, upgrades, permissions, and migration](https://stef-k.github.io/Offenders/installation.html)
