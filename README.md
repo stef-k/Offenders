@@ -17,7 +17,7 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 ## Requirements
 
 - Python **3.12+**; the supported server/development baseline is Ubuntu **24.04 LTS** with Python **3.12**.
-- Fail2Ban **1.1.x** installed separately and logging to:
+- Fail2Ban **1.0.x or 1.1.x** installed separately (production baseline: **1.0.2**) and logging to:
   - `/var/log/fail2ban.log` (plus rotated logs)
 - Ability to run `fail2ban-client` (the app uses `sudo fail2ban-client ...`)
 
@@ -248,14 +248,23 @@ It does not require a running Fail2Ban daemon.
 Fresh installation and the offline suite were validated on Ubuntu 24.04 with
 Python 3.12.3 and Textual 8.2.8, including the optional GeoIP extra. Both the
 installed command and executable source script rendered and exited successfully
-in a local pseudo-terminal without a live Fail2Ban daemon. The jail status fields used by Offenders
-(`Jail list` and `Currently banned`) match Fail2Ban 1.1.0 client formatting.
+in a local pseudo-terminal without a live Fail2Ban daemon.
 Existing UI compatibility fallbacks remain because the parsing tests from #12
 do not protect those UI paths.
 
-Live server qualification still requires running `fail2ban-client --version`,
-checking `sudo fail2ban-client status` and `sudo fail2ban-client status <jail>`,
-and launching `offenders` in a terminal with real logs. Verify that the dashboard
-shows the same jails and active-ban counts, refreshes with `r`, and exits with `q`.
-Offline tests do not establish server permissions, real log access, or live
-Fail2Ban integration.
+Read-only production inspection on 2026-09-27 confirmed Ubuntu 24.04.5,
+Python 3.12.3, and Fail2Ban 1.0.2, eight active jails, readable Fail2Ban logs,
+and zero current bans in the inspected `sshd` jail. Status inspection required
+`sudo`; no server files, packages, configuration, or Fail2Ban state were changed.
+
+Offenders uses only `fail2ban-client status` and `status <jail>`, extracting
+`Jail list` and `Currently banned`. These commands and fields are supported by
+both release lines; no Offenders dependency requires Fail2Ban 1.1.x. Tests use
+captured 1.0.2 status output plus representative 1.0.x/1.1.x output with nonzero
+ban counts. See [fixture provenance](tests/fixtures/README.md).
+
+Qualification combines the local smoke test of the new application revision,
+read-only production inspection, and offline parsing tests. The new revision was
+not installed or launched on production, and no live 1.1.x daemon was exercised.
+This evidence does not claim end-to-end execution of the new revision on the server;
+a server upgrade or installation is not required for this compatibility assessment.

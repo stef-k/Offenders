@@ -95,16 +95,29 @@ class JailStatusTests(unittest.TestCase):
     """Parse representative client output without invoking sudo or Fail2Ban."""
 
     def test_jail_list(self):
-        """Extract comma-separated jail names from the status tree."""
-        output = (Path(__file__).parent / "fixtures" / "status.txt").read_text()
-        with patch.object(offenders, "_run", return_value=output):
-            self.assertEqual(offenders.get_jail_list(), ["sshd", "nginx-http-auth", "recidive"])
+        """Accept live 1.0.2 and representative 1.0.x/1.1.x status trees."""
+        cases = [
+            ("status.txt", ["sshd", "nginx-http-auth", "recidive"]),
+            ("status-1.0.2-live.txt", [
+                "nginx-badbots", "nginx-wp-login", "nginx-xmlrpc", "recidive",
+                "sshd", "wayfarer-nginx-404", "wayfarer-nginx-login", "wayfarer-nginx-scanner",
+            ]),
+        ]
+        for filename, expected in cases:
+            with self.subTest(fixture=filename):
+                output = (Path(__file__).parent / "fixtures" / filename).read_text()
+                with patch.object(offenders, "_run", return_value=output) as command:
+                    self.assertEqual(offenders.get_jail_list(), expected)
+                    command.assert_called_once_with(["sudo", "fail2ban-client", "status"])
 
     def test_current_bans_not_total_or_failed_attempts(self):
-        """Use the current ban count from the Actions section."""
-        output = (Path(__file__).parent / "fixtures" / "status-sshd.txt").read_text()
-        with patch.object(offenders, "_run", return_value=output):
-            self.assertEqual(offenders.get_currently_banned_for_jail("sshd"), 2)
+        """Read live zero and representative nonzero counts on both release lines."""
+        for filename, expected in [("status-sshd.txt", 2), ("status-sshd-1.0.2-live.txt", 0)]:
+            with self.subTest(fixture=filename):
+                output = (Path(__file__).parent / "fixtures" / filename).read_text()
+                with patch.object(offenders, "_run", return_value=output) as command:
+                    self.assertEqual(offenders.get_currently_banned_for_jail("sshd"), expected)
+                    command.assert_called_once_with(["sudo", "fail2ban-client", "status", "sshd"])
 
     def test_empty_and_unrecognized_status(self):
         """Preserve the current empty/zero fallback for missing status fields."""
