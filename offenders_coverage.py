@@ -299,7 +299,10 @@ def discover_static(root: Path = Path("/etc/fail2ban")) -> StaticInventory:
                  1 if path.suffix == ".conf" else 3)
         return layer, path.name
     defaults, sections, origins, jail_errors = _merge(sorted(jail_paths, key=precedence), reader)
-    jail_reads_complete = not errors and not any(row.limitations for row in reader.fragments)
+    # Unresolved includes can override enabled/filter/source fields, including
+    # explicit section fields that outrank later defaults in a before include.
+    # Without resolving those fields' provenance, no disabled fact is proven.
+    jail_reads_complete = not errors and not jail_errors
     jails = tuple(_jail(name, {**defaults, **fields},
                         tuple(dict.fromkeys(origins.get("DEFAULT", []) + origins[name])))
                   for name, fields in sorted(sections.items()))

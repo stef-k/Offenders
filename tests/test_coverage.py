@@ -221,7 +221,7 @@ class ConfigTests(unittest.TestCase):
                 result = discover_coverage(supplied, config_root=self.root)
             self.assertEqual(result.targets[0].classification, "insufficient_evidence")
 
-    def test_includes_preserve_family_candidates_but_not_complete_negatives(self):
+    def test_includes_block_unproven_disabled_candidates_and_negatives(self):
         self.write("jail.conf", "[INCLUDES]\nbefore=paths-common.conf\n"
                    "[DEFAULT]\nenabled=false\nfilter=%(__name__)s\n"
                    "[sshd]\nlogpath=%(auth_log)s\n")
@@ -229,9 +229,28 @@ class ConfigTests(unittest.TestCase):
         with patch("offenders_coverage.get_jail_list", return_value=[]):
             result = discover_coverage(snapshot(source("/auth"), source("/ftp", "vsftpd")),
                                        config_root=self.root)
-        self.assertEqual(result.targets[0].classification, "available_disabled")
+        self.assertEqual(result.targets[0].classification, "insufficient_evidence")
         self.assertEqual(result.targets[1].classification, "insufficient_evidence")
         self.assertTrue(result.static.limitations)
+
+    def test_unresolved_jail_includes_cannot_assert_disabled_state(self):
+        """Both include orders can override defaults through explicit jail fields."""
+        self.write("filter.d/sshd.conf", "[Definition]\n")
+        self.write("override.conf", "[sshd]\nenabled=true\n")
+        for order in ("before", "after"):
+            self.write("jail.conf", f"[INCLUDES]\n{order}=override.conf\n"
+                       "[DEFAULT]\nenabled=false\nfilter=%(__name__)s\n[sshd]\n")
+            with self.subTest(order=order), patch("offenders_coverage.get_jail_list", return_value=[]):
+                result = discover_coverage(snapshot(source("/auth")), config_root=self.root)
+                self.assertEqual(result.targets[0].classification, "insufficient_evidence")
+                self.assertFalse(result.targets[0].disabled_definitions)
+                self.assertFalse(result.static.jail_reads_complete)
+            runtime = JailSources("custom", ("/auth",), None, ())
+            with self.subTest(order=order, runtime=True), \
+                    patch("offenders_coverage.get_jail_list", return_value=["custom"]), \
+                    patch("offenders_coverage.get_jail_sources", return_value=runtime):
+                result = discover_coverage(snapshot(source("/auth")), config_root=self.root)
+                self.assertEqual(result.targets[0].classification, "covered_enabled")
 
     def test_literal_matches_never_expand_or_invent_units_and_order_is_stable(self):
         self.write("jail.conf", "[custom]\nenabled=false\nfilter=custom\nlogpath=/site/*.log\n")

@@ -374,6 +374,9 @@ files establish definition existence and literal journal units. Reads use the
 current user, confined to `/etc/fail2ban`, with 256-file, 1-MiB-per-file and
 8-MiB-total bounds. Raw INI parsing does not reproduce general interpolation or
 include chains; unsupported, unreadable, or oversized evidence stays partial.
+Any unresolved jail include blocks static disabled candidates because its
+enabled, filter, or source overrides are unknown; concrete runtime coverage
+remains authoritative.
 Source-family targets distinguish `covered_enabled`, `available_disabled`,
 `no_obvious_match`, and `insufficient_evidence`. An exact stock-family catalog
 can establish disabled-definition relevance, explicitly without proving a
