@@ -72,4 +72,3 @@ class CommandTests(unittest.TestCase):
         for timeout in [0, -1, float("inf"), float("nan")]:
             with self.subTest(timeout=timeout), self.assertRaises(ValueError):
                 offenders.run_host_command([sys.executable], timeout=timeout)
-

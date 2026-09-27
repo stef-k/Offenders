@@ -72,7 +72,6 @@ class Report:
     jail_statuses: List[JailStatus]
     last_10_bans: List[str]
 
-
     @property
     def jail_list(self) -> List[str]:
         """Keep the daemon's jail order for the dashboard."""
