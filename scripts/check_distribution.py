@@ -29,7 +29,7 @@ def check_metadata(raw, project, root):
     assert metadata["License-Expression"] == project["license"]
     assert metadata.get_all("License-File") == ["LICENSE"]
     assert metadata["Description-Content-Type"] == "text/markdown"
-    assert metadata.get_payload().strip() == (root / "README.md").read_text().strip()
+    assert metadata.get_payload(decode=True).decode("utf-8").strip() == (root / "README.md").read_text().strip()
 
 
 def check_wheel(path, project, modules, root):
