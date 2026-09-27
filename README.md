@@ -31,8 +31,46 @@ This project depends on:
 - `maxminddb>=3.1,<4` — direct generic MMDB reads, including a pure-Python backend;
   no system lookup binary is needed.
 
-From the repository root, install into a virtual environment (on Ubuntu, install
-`python3-venv` first if needed). `pyproject.toml` owns the dependency bounds:
+## Install and upgrade
+
+The supported application distribution is PyPI with pipx on Ubuntu 24.04 /
+Python 3.12. **The first PyPI release is pending final qualification (#48); the
+index install commands below become usable after that release is published.**
+Until then, use the source workflow below or a locally built wheel.
+
+```bash
+sudo apt-get update
+sudo apt-get install -y pipx
+pipx ensurepath
+# Open a new login shell after ensurepath, then:
+pipx install offenders
+command -v offenders
+offenders
+```
+
+For subsequent releases and removal:
+
+```bash
+pipx upgrade offenders
+pipx uninstall offenders
+```
+
+pipx isolates Python dependencies. Fail2Ban, log access, and optional host tools
+remain system responsibilities. Installation does not download GeoIP databases;
+data stays in the existing user-owned XDG location outside the package.
+
+Older standalone copies and their separate virtual environments are left intact.
+Before switching, record the old executable path and retain its environment for
+rollback. After installation, use `command -v offenders` (and `type -a offenders`
+in Bash) to check for an older command earlier on PATH. Deliberately adjust PATH
+or invoke the pipx executable by its reported path, then run `offenders geoip
+status` and the dashboard. Do not remove the old installation until the new one
+is verified. Rollback means restoring the old command resolution and environment;
+package uninstall does not delete GeoIP data. Production cutover belongs to #70.
+
+### Source and development installs
+
+From the repository root (install `python3-venv` on Ubuntu if needed):
 
 ```bash
 python3 -m venv .venv
@@ -40,10 +78,12 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-A base install includes the reader but does not download databases. For a non-editable installation,
-use `python -m pip install .`; `python -m pip install -r requirements.txt` remains
-a compatible alternative. Editable installation keeps changes to the documented
-configuration constants effective when running the installed command.
+`pyproject.toml` owns the dependency bounds. A non-editable source install uses
+`python -m pip install .`; `python -m pip install -r requirements.txt` remains
+compatible. Editable installation keeps changes to documented configuration
+constants effective. For local application isolation, `pipx install .` is also
+available. See [release preparation](RELEASING.md) for wheel/sdist validation and
+the maintainer-only publishing setup.
 
 ## System tools (optional but recommended)
 
@@ -199,15 +239,14 @@ which fail2ban-client
 
 ## Run
 
-Activate the environment used for installation, then run:
+After pipx installation, run from any directory:
 
 ```bash
-source .venv/bin/activate
 offenders
 ```
 
-From the checkout, `python offenders.py` and `./offenders.py` also work with that
-environment active. Run as the user with log-read and Fail2Ban permissions; the
+From the checkout, `python offenders.py` and `./offenders.py` also work with the
+source installation virtual environment active. Run as the user with log-read and Fail2Ban permissions; the
 application still invokes `sudo -n fail2ban-client` for jail status.
 
 ## Refresh behavior
