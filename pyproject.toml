@@ -16,4 +16,4 @@ dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4"]
 offenders = "offenders:main"
 
 [tool.setuptools]
-py-modules = ["offenders", "offenders_host", "offenders_sources", "offenders_coverage", "offenders_report", "offenders_filter", "offenders_aggregate", "offenders_summary_ui", "offenders_ip", "offenders_ip_ui", "offenders_events", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui", "offenders_jail_ui"]
+py-modules = ["offenders", "offenders_host", "offenders_sources", "offenders_evidence", "offenders_coverage", "offenders_report", "offenders_filter", "offenders_aggregate", "offenders_summary_ui", "offenders_ip", "offenders_ip_ui", "offenders_events", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui", "offenders_jail_ui"]

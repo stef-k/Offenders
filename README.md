@@ -383,7 +383,27 @@ can establish disabled-definition relevance, explicitly without proving a
 concrete source relationship. These are facts, not recommendations. Generic
 listeners and observed services without sources remain insufficient evidence.
 Coverage is explicitly invoked and stays outside report/dashboard refresh,
-filtering, and navigation. Security-log content collection belongs to #30.
+filtering, and navigation.
+`offenders_evidence.EvidenceCollector.collect(source_inventory, force=False,
+lookback=timedelta(hours=24))` explicitly consumes one supplied #28 snapshot.
+It never rediscovers host/source/coverage state or runs on dashboard refresh.
+One in-process cache entry retains successful or partial snapshots for five
+monotonic minutes, keyed by inventory object identity and lookback; force bypasses
+it. Lookback must be a positive timedelta no greater than seven days.
+File evidence uses the resolved target, bounded 256-KiB tails from current and one
+plain `.1` rotation, at most 2,000 lines/512 KiB per source. All current sources
+precede rotations. Compressed history is not read. File timestamps stay unset;
+#31 owns source-specific timestamp interpretation and security-pattern semantics.
+Journal evidence uses one non-sudo, eight-second JSON query through #14 per readable
+unit, with the captured UTC lower bound and newest 1,000 entries (4-MiB parse cap).
+The runner still captures stdout before returning; this is a parse/retention cap,
+not a streaming subprocess-memory guarantee. Stable device/inode/byte offsets and
+journal cursors drive exact deduplication with unioned source identities. Equal
+text alone never deduplicates. Snapshots retain exact upstream associations,
+per-source record ordering, and explicit skipped/unavailable/partial/truncated
+outcomes. Global retention stops at 10,000 records or 8 MiB of UTF-8 text, with
+16 KiB per record. File line bodies preserve CR and other raw characters but omit
+the LF delimiter. No unified file/journal event chronology is inferred.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
