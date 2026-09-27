@@ -163,7 +163,7 @@ sudo /usr/bin/python3 /usr/local/bin/update_geoip_db.py --keep-last 6
 
 DB-IP Lite downloads page: <https://db-ip.com/db/lite.php>
 
-### Bounded Fail2Ban status commands
+### Structured Fail2Ban status and bounded commands
 
 Each Fail2Ban status call has an eight-second timeout, closed standard input,
 and uses an argument array without a shell. The reusable runner preserves exit
@@ -172,9 +172,25 @@ timeout, non-zero exit, and OS execution failure. Timeout retains partial output
 and kills/reaps the direct child. A missing target behind sudo is reported as
 sudo's non-zero exit, with its stderr retained.
 
-Failed status calls are logged and retain the existing empty-list/zero fallback;
-richer unavailable-state reporting is separate work. Other tools (GeoIP, WHOIS,
-and the updater) are outside this migration.
+`Report.jail_statuses` carries each jail's name, current/total failed and banned
+counts, and normalized IPv4/IPv6 banned addresses in daemon jail order. Dashboard
+ban rows retain their existing descending count order. Valid zero counts and empty
+IP/jail lists remain successful data. Missing, duplicate, or malformed required
+fields raise `Fail2BanParseError`; failed commands raise `Fail2BanCommandError`
+with the original `CommandResult` and command arguments. Neither failure becomes
+an authoritative empty list or zero count. The existing refresh error path displays
+the failure; last-known-good/degraded-state behavior is separate work (#15).
+
+After each jail status, read-only `get <jail> bantime`, `get <jail> findtime`, and
+`get <jail> maxretry` collect optional integer settings (times in seconds, including
+negative bantime for permanent bans). Every call uses the same eight-second
+bound. Unavailable settings are `None`; `setting_errors` retains command or parse
+errors without discarding valid core status. Backend and filter identity remain
+`None`: the 1.0.2 client contract exposes neither identity reliably. A file list,
+journal match, or jail name is not a reliable substitute, and configuration files
+are not scraped. The supported commands are documented in upstream's
+[1.0.2 protocol](https://github.com/fail2ban/fail2ban/blob/1.0.2/fail2ban/protocol.py).
+Other tools (GeoIP, WHOIS, and the updater) are outside this boundary.
 
 ### Avoid sudo password prompts
 
@@ -274,9 +290,9 @@ Python 3.12.3, and Fail2Ban 1.0.2, eight active jails, readable Fail2Ban logs,
 and zero current bans in the inspected `sshd` jail. Status inspection required
 `sudo`; no server files, packages, configuration, or Fail2Ban state were changed.
 
-Offenders uses only `fail2ban-client status` and `status <jail>`, extracting
-`Jail list` and `Currently banned`. These commands and fields are supported by
-both release lines; no Offenders dependency requires Fail2Ban 1.1.x. Tests use
+Offenders uses `fail2ban-client status`, `status <jail>`, and the three read-only
+`get <jail>` settings commands documented above. These commands and status fields
+are supported on the compatibility floor; no Offenders dependency requires Fail2Ban 1.1.x. Tests use
 captured 1.0.2 status output plus representative 1.0.x/1.1.x output with nonzero
 ban counts. See [fixture provenance](tests/fixtures/README.md).
 

@@ -73,11 +73,3 @@ class CommandTests(unittest.TestCase):
             with self.subTest(timeout=timeout), self.assertRaises(ValueError):
                 offenders.run_host_command([sys.executable], timeout=timeout)
 
-    def test_status_failure_is_logged_and_not_parsed(self):
-        """Failed output cannot masquerade as a valid jail status."""
-        result = offenders.CommandResult(1, "Jail list: sshd", "denied", offenders.CommandFailure.NONZERO_EXIT)
-        with patch.object(offenders, "run_host_command", return_value=result) as command:
-            with self.assertLogs(offenders.__name__, level="WARNING") as logs:
-                self.assertEqual(offenders.get_jail_list(), [])
-            command.assert_called_once_with(["fail2ban-client", "status"], timeout=8, sudo=True)
-            self.assertIn("denied", logs.output[0])
