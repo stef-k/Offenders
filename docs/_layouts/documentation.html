@@ -1,0 +1,12 @@
+---
+layout: default
+---
+{% comment %}Shared theme owns the shell; this wrapper adds project navigation.{% endcomment %}
+{% unless page.url == '/' %}
+<nav aria-label="Documentation navigation">
+  <a href="{{ '/' | relative_url }}">Documentation home</a> ·
+  <a href="https://github.com/stef-k/Offenders">View on GitHub</a>
+</nav>
+{% endunless %}
+
+{{ content }}

@@ -1,0 +1,19 @@
+# Resolve shared presentation assets during the GitHub Pages build.
+remote_theme: stef-k/.github@main
+
+plugins:
+  - jekyll-remote-theme
+
+# Project identity and repository-scoped Pages URL.
+title: Offenders
+description: Fail2Ban investigation and coverage TUI.
+url: https://stef-k.github.io
+baseurl: /Offenders
+repository: stef-k/Offenders
+
+# All operator pages use the small local navigation wrapper.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: documentation
