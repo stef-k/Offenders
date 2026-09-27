@@ -141,7 +141,7 @@ class GeoIPStatus(Static):
         self._perform_update(automatic=False)
 
     def _perform_update(self, *, automatic):
-        """Delegate all locking, due policy, download and activation to #44."""
+        """Delegate locking, due policy, download and activation to offenders_geoip_update."""
         try:
             result = update(self.root, automatic=automatic)
             if result is not None:

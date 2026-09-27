@@ -17,7 +17,7 @@ def web_inventory(family='nginx', category='sensitive_dotfile', **options):
 
 
 def matched(inv, decision, text):
-    """Model #35's exact-byte response at the public validation seam."""
+    """Model the exact-byte response at the public validation seam."""
     return FilterValidation(decision, 'custom', custom_sha256=hashlib.sha256(text.encode()).hexdigest(),
         custom_bytes=len(text.encode()), target=SampleResult(tested_lines=3, matched_lines=3,
         missed_lines=0, ignored_lines=0), context=SampleResult(tested_lines=2, matched_lines=1,

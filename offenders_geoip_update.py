@@ -177,7 +177,7 @@ def _activate(root, stage, month):
 
 
 def update(root=None, *, opener=fetch, now=None, automatic=False):
-    """Update explicitly, or atomically claim a due automatic check for #18."""
+    """Update explicitly, or atomically claim a due opt-in automatic check."""
     root = (root if root is not None else resolve_data_root()).absolute()
     now = time.time() if now is None else now
     with writer_lock(root):

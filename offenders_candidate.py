@@ -9,7 +9,7 @@ from offenders_validation import FilterValidation, validate_custom
 
 # Fixed path fragments, never interpolated from observed log content. Percent
 # signs are doubled for Fail2Ban's INI interpolation. Traversal decoding is bounded
-# to literal, encoded and double-encoded dots/separators, like #31's recognizer.
+# to literal, encoded and double-encoded dots/separators, like the offenders_patterns recognizer.
 _SEP = r"(?:/|\\|%%2[fF]|%%5[cC]|%%252[fF]|%%255[cC])"
 _DOT = r"(?:\.|%%2[eE]|%%252[eE])"
 PATHS = {

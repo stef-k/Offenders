@@ -20,9 +20,10 @@ install/upgrade/uninstall instructions; keep the executable `offenders`. If both
 names are unavailable, stop for a maintainer decision. Never upload just to test
 availability. A pending publisher does not reserve a name.
 
-The first final tag/release must wait until #48 passes after #69, #46, and #47.
-Publishing a release is an explicit maintainer action; #70 owns subsequent live
-installation and legacy-command cutover with rollback. No packaging check
+The first final tag/release must wait for final repository documentation and
+release qualification. Publishing a release is an explicit maintainer action.
+Production deployment qualification, live installation, and legacy-command cutover
+with rollback are a separate post-release gate. No packaging check
 qualifies production or downloads the production GeoIP data.
 
 ## Local qualification
@@ -67,12 +68,12 @@ pipx uninstall offenders
 Reinstall exercises replacement from the recorded local wheel; normal published
 updates use `pipx upgrade offenders`. These temporary paths avoid the operator's
 existing pipx applications and GeoIP policy. Retain evidence as needed, then
-remove only the disposable directory you created. Source/editable workflows
-remain described in README. No PyPI upload is needed for local qualification.
+remove only the disposable directory you created. Source/editable contributor workflows
+are described in [DEVELOPMENT.md](DEVELOPMENT.md). No PyPI upload is needed for local qualification.
 
 ## Trusted Publishing setup
 
-After `.github/workflows/release.yml` merges, the maintainer must:
+Before publication through `.github/workflows/release.yml`, the maintainer must:
 
 1. Create the GitHub environment `pypi`, requiring explicit maintainer approval
    where the repository plan supports it. Restrict allowed deployment tags as
@@ -80,8 +81,8 @@ After `.github/workflows/release.yml` merges, the maintainer must:
 2. Configure the PyPI Trusted Publisher with owner `stef-k`, repository
    `Offenders`, workflow filename `release.yml`, and environment `pypi`.
    For an absent project, use PyPI's pending-publisher flow with the selected name.
-3. After #48, recheck name availability, set the single project version through
-   review, and create `v<project.version>` at the qualified commit. Deliberately
+3. After final documentation and release qualification, recheck name availability,
+   set the single project version through review, and create `v<project.version>` at the qualified commit. Deliberately
    publish its GitHub Release and approve the environment job.
 
 See PyPI's [publisher setup](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)

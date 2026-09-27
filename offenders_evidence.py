@@ -1,4 +1,4 @@
-"""Explicit bounded evidence acquisition; timestamp/security semantics belong to #31."""
+"""Explicit bounded evidence acquisition; offenders_patterns owns event semantics."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
