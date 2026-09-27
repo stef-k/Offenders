@@ -178,8 +178,7 @@ ban rows retain their existing descending count order. Valid zero counts and emp
 IP/jail lists remain successful data. Missing, duplicate, or malformed required
 fields raise `Fail2BanParseError`; failed commands raise `Fail2BanCommandError`
 with the original `CommandResult` and command arguments. Neither failure becomes
-an authoritative empty list or zero count. The existing refresh error path displays
-the failure; last-known-good/degraded-state behavior is separate work (#15).
+an authoritative empty list or zero count. The dashboard retains the last successful report on collection failure.
 
 After each jail status, read-only `get <jail> bantime`, `get <jail> findtime`, and
 `get <jail> maxretry` collect optional integer settings (times in seconds, including
@@ -222,6 +221,19 @@ offenders
 From the checkout, `python offenders.py` and `./offenders.py` also work with that
 environment active. Run as the user with log-read and Fail2Ban permissions; the
 application still invokes `sudo -n fail2ban-client` for jail status.
+
+## Refresh behavior
+
+Mount, the 30-second timer, and manual refresh share one active report build.
+Timer ticks during a build are skipped; pressing `r` displays “Refresh already
+in progress” without cancelling or queuing work. Collection runs off the UI thread.
+
+A failed refresh preserves all tables and the last-success timestamp. The summary
+shows the failure time, category, bounded detail, and that displayed data comes
+from the last successful refresh. Before the first success, tables remain empty
+and the summary explicitly says data is unavailable. The next successful refresh
+replaces the report and clears the degraded state. Valid zero counts remain
+successful data. There are no retries or queued refreshes.
 
 ## Key bindings
 
