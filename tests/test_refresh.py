@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime as dt
+from dataclasses import replace
 import threading
 import unittest
 from unittest.mock import patch
@@ -20,7 +21,8 @@ def report(count=2):
     """Build distinctive trustworthy data without host collection."""
     return Report(
         generated_at=dt.datetime(2026, 9, 27, 12, count),
-        cutoff_date=None,
+        period="7d",
+        window_start=None,
         events=[BanEvent(dt.datetime(2026, 9, 27, 12), "sshd", "8.8.8.8", "diagnostic")] * count,
         top_offenders=[Offender("8.8.8.8", count, "Unknown", "", "No ASN")],
         jail_statuses=[JailStatus("sshd", 0, 0, count, count, ("8.8.8.8",))],
@@ -54,7 +56,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
         """Mount, timer, and keyboard share one build; success permits the next."""
         entered, release = threading.Event(), threading.Event()
 
-        def collect():
+        def collect(*, period):
             entered.set()
             if not release.wait(3):
                 raise AssertionError("test did not release collector")
@@ -72,6 +74,10 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
                         notify.assert_called_once_with(
                             "Refresh already in progress", timeout=2.0
                         )
+                        notify.reset_mock()
+                        await pilot.press("p")
+                        notify.assert_called_once_with("Refresh already in progress", timeout=2.0)
+                        self.assertEqual(app._active_period, "7d")
                     self.assertEqual(build.call_count, 1)
                 finally:
                     release.set()
@@ -98,7 +104,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
                 summary = str(app.query_one("#summary").content)
                 self.assertIn("Degraded", summary)
                 self.assertIn("timeout", summary)
-                self.assertIn("Showing last successful refresh 2026-09-27 12:02:00", summary)
+                self.assertIn("Showing last successful 7d refresh 2026-09-27 12:02:00", summary)
                 self.assertIn("[red]bad", summary)
                 self.assertNotIn("\n", summary)
                 self.assertLess(len(summary), 320)
@@ -110,7 +116,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_initial_failure_is_unavailable_then_zero_is_authoritative(self):
         """No initial failure fabricates counts; a real empty report is valid."""
-        empty = Report(dt.datetime(2026, 9, 27), None, [], [], [])
+        empty = Report(dt.datetime(2026, 9, 27), "7d", None, [], [], [])
         with patch.object(offenders, "build_report", side_effect=[
             Fail2BanParseError("missing jail field"), empty,
         ]):
@@ -130,7 +136,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
         """Cancellation cannot overlap builders or apply a cancelled result."""
         entered, release = threading.Event(), threading.Event()
 
-        def collect():
+        def collect(*, period):
             entered.set()
             if not release.wait(3):
                 raise AssertionError("test did not release collector")
@@ -168,3 +174,67 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
                 app.refresh_report()
                 await app.workers.wait_for_complete()
                 self.assertEqual(build.call_count, 2)
+
+    async def test_period_cycle_commits_success_and_refreshes_committed_period(self):
+        """Keyboard changes run off-loop and all refresh sources reuse success."""
+        ui_thread = threading.get_ident()
+
+        def collect(*, period):
+            self.assertNotEqual(threading.get_ident(), ui_thread)
+            return replace(report(), period=period)
+
+        with patch.object(offenders, "build_report", side_effect=collect) as build:
+            app = offenders.OffendersApp()
+            async with app.run_test() as pilot:
+                await app.workers.wait_for_complete()
+                build.assert_called_once_with(period="7d")
+                for period in ["30d", "all", "1h", "24h", "7d"]:
+                    with self.subTest(period=period):
+                        before = build.call_count
+                        await pilot.press("p")
+                        await app.workers.wait_for_complete()
+                        self.assertEqual(build.call_count, before + 1)
+                        build.assert_called_with(period=period)
+                        self.assertIn(f"period={period}", str(app.query_one("#summary").content))
+                        app.refresh_report()  # Timer and GeoIP callback.
+                        await app.workers.wait_for_complete()
+                        build.assert_called_with(period=period)
+                        await pilot.press("r")
+                        await app.workers.wait_for_complete()
+                        build.assert_called_with(period=period)
+
+    async def test_period_failure_retains_committed_report_without_retry(self):
+        """A blocked then failed target never becomes active or queues a retry."""
+        entered, release = threading.Event(), threading.Event()
+
+        def fail(*, period):
+            self.assertEqual(period, "30d")
+            entered.set()
+            if not release.wait(3):
+                raise AssertionError("test did not release collector")
+            raise RuntimeError("period collection failed")
+
+        with patch.object(offenders, "build_report", return_value=report()) as build:
+            app = offenders.OffendersApp()
+            async with app.run_test() as pilot:
+                await app.workers.wait_for_complete()
+                before = rendered(app)
+                build.side_effect = fail
+                try:
+                    await pilot.press("p")
+                    await self.wait_started(entered)
+                    self.assertEqual(rendered(app), before)
+                    self.assertIn("period=7d", str(app.query_one("#summary").content))
+                    await pilot.press("p")
+                    self.assertEqual(build.call_count, 2)
+                finally:
+                    release.set()
+                await app.workers.wait_for_complete()
+                self.assertEqual(rendered(app), before)
+                self.assertIn("Showing last successful 7d refresh", str(app.query_one("#summary").content))
+                self.assertEqual(app._active_period, "7d")
+                build.side_effect = None
+                app.refresh_report()
+                await app.workers.wait_for_complete()
+                build.assert_called_with(period="7d")
+                self.assertEqual(build.call_count, 3)

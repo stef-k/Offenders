@@ -1,4 +1,4 @@
-"""Offline contracts for normalized history and date-based report selection."""
+"""Offline contracts for normalized history and exact period report selection."""
 
 import datetime as dt
 import gzip
@@ -41,30 +41,57 @@ class ParsingTests(unittest.TestCase):
                 self.assertIsNone(events.parse_ban_event(line))
 
     def test_report_selection_counts_and_compatibility(self):
-        """Keep the whole cutoff date, count parsed IPs, and enrich each top IP once."""
+        """Select rolling history, count parsed IPs, and enrich each top IP once."""
         local = ["10.1.2.3", "172.16.0.1", "192.168.1.1", "127.0.0.1", "169.254.1.1", "fd00::1", "::1", "fe80::1"]
         lines = ["2026-09-19 23:59:59 [sshd] Ban 8.8.4.4",
-                 "2026-09-20 00:00:00 [sshd] Ban 8.8.8.8",
+                 "2026-09-20 12:00:01 [sshd] Ban 8.8.8.8",
                  "2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"]
         lines += [f"2026-09-27 12:00:01 [sshd] Ban {ip}" for ip in [*local, "2606:4700::1111"]]
         parsed = [events.parse_ban_event(line) for line in lines]
+        now = dt.datetime(2026, 9, 27, 12, 0, 1)
         with patch.object(reports.dt, "datetime") as clock, \
              patch.object(reports, "collect_ban_events", return_value=parsed), \
              patch.object(reports, "get_jail_list", return_value=[]), \
              patch.object(reports, "geoip") as geo:
-            clock.now.return_value.date.return_value = dt.date(2026, 9, 27)
+            clock.now.return_value = now
             result = reports.build_report()
-            self.assertEqual(result.cutoff_date, dt.date(2026, 9, 20))
+            self.assertEqual(result.period, "7d")
+            self.assertEqual(result.window_start, now - dt.timedelta(hours=168))
             self.assertEqual(result.events, parsed[1:])
             self.assertEqual(result.ban_lines, lines[1:])
             self.assertEqual(result.total_bans, len(parsed) - 1)
             self.assertEqual(result.last_10_bans, parsed[-10:])
             self.assertEqual([(o.ip, o.count) for o in result.top_offenders], [("8.8.8.8", 2), ("2606:4700::1111", 1)])
             self.assertEqual(geo.lookup.call_args_list, [call("8.8.8.8"), call("2606:4700::1111")])
-            all_history = reports.build_report(lookback_days=0, ignore_private=False)
-            self.assertIsNone(all_history.cutoff_date)
+            all_history = reports.build_report(period="all", ignore_private=False)
+            self.assertIsNone(all_history.window_start)
             self.assertEqual(all_history.events, parsed)
             self.assertEqual(sum(o.count for o in all_history.top_offenders), len(parsed))
+
+    def test_exact_period_boundaries(self):
+        """Finite windows include both endpoints; all retains even future events."""
+        now = dt.datetime(2026, 9, 27, 12, 34, 56, 123456)
+        tick = dt.timedelta(microseconds=1)
+        for period, hours in [("1h", 1), ("24h", 24), ("7d", 168), ("30d", 720), ("all", None)]:
+            with self.subTest(period=period):
+                boundary = now - dt.timedelta(hours=hours or 1)
+                parsed = [events.BanEvent(stamp, "sshd", "8.8.8.8", "raw")
+                          for stamp in [boundary - tick, boundary, now, now + tick]]
+                with patch.object(reports.dt, "datetime") as clock, \
+                     patch.object(reports, "collect_ban_events", return_value=parsed) as collect, \
+                     patch.object(reports, "get_jail_list", return_value=[]), \
+                     patch.object(reports, "geoip"):
+                    clock.now.return_value = now
+                    result = reports.build_report(period=period)
+                clock.now.assert_called_once_with()
+                collect.assert_called_once_with(reports.LOG_CURRENT, reports.LOG_ROTATED, reports.LOG_GZ_GLOB)
+                selected = parsed if hours is None else parsed[1:3]
+                self.assertEqual(result.events, selected)
+                self.assertEqual(result.last_10_bans, selected)
+                self.assertEqual(result.total_bans, len(selected))
+                self.assertEqual(result.top_offenders[0].count, len(selected))
+                self.assertEqual(result.generated_at, now)
+                self.assertEqual(result.window_start, boundary if hours else None)
 
 
 class LogFileTests(unittest.TestCase):
