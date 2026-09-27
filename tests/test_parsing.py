@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import offenders
+import offenders_report as offenders
 
 
 class ParsingTests(unittest.TestCase):
