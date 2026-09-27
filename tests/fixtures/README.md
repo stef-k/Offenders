@@ -17,3 +17,16 @@ The latter adds `status --all` handling and statistics output; Offenders uses
 neither. Plain `status` and `status <jail>` retain the relevant fields and layout.
 The tests also assert those exact command forms so integration does not silently
 start depending on newer options.
+
+## Pattern recognition examples
+
+`tests/test_patterns.py` contains adapted, synthetic representative log lines based
+on the [Fail2Ban 1.0.2 log fixtures](https://github.com/fail2ban/fail2ban/tree/1.0.2/fail2ban/tests/files/logs)
+for `sshd`, `dovecot`, `vsftpd`, `proftpd`, `pure-ftpd`, `nginx-http-auth`,
+`apache-auth`, and `nginx-botsearch`. Addresses, dates, usernames, and hostnames are
+test values. Additional path-category and timestamp-domain cases exercise #31's
+explicit contract; these are not production captures or failregex qualification.
+The Apache nested-client negative example and PAM `ruser=rhost=...` case protect
+source-field attribution. Localized Pure-FTPd messages deliberately remain
+unrecognized. Fixtures are embedded in the compact public-projection table so
+expected family, kind, and source IP stay next to the representative line.

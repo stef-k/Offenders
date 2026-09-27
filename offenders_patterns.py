@@ -27,7 +27,10 @@ ISO = re.compile(r"^(?P<stamp>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:[.,]\d+)?(?:Z|
 NGINX_TIME = re.compile(r"^(?P<stamp>\d{4}/\d\d/\d\d \d\d:\d\d:\d\d)\s+")
 APACHE_TIME = re.compile(r"^\[[A-Za-z]{3} (?P<stamp>[A-Za-z]{3}\s+\d{1,2} \d\d:\d\d:\d\d(?:\.\d+)? \d{4})\]\s+")
 VSFTPD_TIME = re.compile(r"^[A-Za-z]{3} (?P<stamp>[A-Za-z]{3}\s+\d{1,2} \d\d:\d\d:\d\d \d{4})\s+")
-ACCESS = re.compile(r'^(?P<ip>\S+) \S+ \S+ \[(?P<stamp>[^\]]*)\] "(?P<method>[A-Z]+) (?P<path>\S+) HTTP/\d(?:\.\d)?" (?P<status>\d{3}) (?:\d+|-)(?:\s|$)')
+ACCESS = re.compile(
+    r'^(?P<ip>\S+) \S+ \S+ \[(?P<stamp>[^\]]*)\] '
+    r'"(?P<method>[A-Z]+) (?P<path>\S+) HTTP/\d(?:\.\d)?" '
+    r'(?P<status>\d{3}) (?:\d+|-)(?:\s|$)')
 # Program tags are only stripped after association gating, never used to infer a family.
 TAGS = {"ssh": r"sshd(?:-session)?", "dovecot": r"dovecot(?:-auth)?",
         "vsftpd": r"vsftpd(?:\(pam_unix\))?", "proftpd": r"proftpd", "pure-ftpd": r"pure-ftpd"}
@@ -220,7 +223,10 @@ def _auth(family: str, body: str):
     elif family == "dovecot":
         match = re.match(r"(?:imap|pop3|submission)-login: .*\(auth failed\b.*(?:^|[ ,])rip=(?P<ip>[^,\s]+)", body)
         if not match:
-            match = re.match(r"(?:auth(?:-worker)?(?:\([^)]*\))?:\s+)?(?:Info: )?(?:pam|passwd-file|sql|ldap)\([^,]*,(?P<ip>[^,)]+)(?:,[^)]*)?\): (?:pam_authenticate\(\) failed|unknown user|Password mismatch)", body, re.I)
+            match = re.match(
+                r"(?:auth(?:-worker)?(?:\([^)]*\))?:\s+)?(?:Info: )?"
+                r"(?:pam|passwd-file|sql|ldap)\([^,]*,(?P<ip>[^,)]+)(?:,[^)]*)?\): "
+                r"(?:pam_authenticate\(\) failed|unknown user|Password mismatch)", body, re.I)
         if not match:
             match = re.match(r"pam_unix\(dovecot:auth\): authentication failure;.*\srhost=(?P<ip>\S+)", body)
         if match:
@@ -228,7 +234,9 @@ def _auth(family: str, body: str):
     elif family == "vsftpd":
         match = re.match(r'(?:\[pid \d+\] )?\[[^\]]*\] FAIL LOGIN: Client "(?P<ip>[^"]+)"', body)
         if not match:
-            match = re.match(r"(?:\(pam_unix\)|pam_unix\(vsftpd:auth\):) authentication failure;.*\srhost=(?P<ip>\S+)", body)
+            match = re.match(
+                r"(?:\(pam_unix\)|pam_unix\(vsftpd:auth\):) "
+                r"authentication failure;.*\srhost=(?P<ip>\S+)", body)
         if match:
             return "vsftpd_login_failure", _ip(match["ip"])
     elif family == "proftpd":
@@ -237,7 +245,8 @@ def _auth(family: str, body: str):
             message = match["message"]
             if re.match(r"SECURITY VIOLATION: .*root login attempted", message, re.I):
                 return "proftpd_root_login", _ip(match["ip"])
-            if re.match(r"(?:USER .*\(Login failed\)|USER .*: no such user found from |Maximum login attempts \(\d+\) exceeded)", message):
+            if re.match(r"(?:USER .*\(Login failed\)|USER .*: no such user found from "
+                        r"|Maximum login attempts \(\d+\) exceeded)", message):
                 return "proftpd_login_failure", _ip(match["ip"])
     elif family == "pure-ftpd":
         match = re.match(r"\(\?@(?P<ip>[^)]+)\) (?:\[WARNING\] )?Authentication failed for user \[", body)
@@ -273,7 +282,8 @@ def _web(family: str, body: str):
         category = _probe(access["path"]) if 400 <= int(access["status"]) < 500 else None
         return ("path_probe", _ip(access["ip"]), category) if category else None
     if family == "nginx":
-        match = re.match(r"\[error\] \d+#\d+: \*\d+ (?P<message>.*), client: (?P<ip>[^,\s]+), server: [^,]*(?P<rest>.*)$", body)
+        match = re.match(r"\[error\] \d+#\d+: \*\d+ (?P<message>.*), "
+                         r"client: (?P<ip>[^,\s]+), server: [^,]*(?P<rest>.*)$", body)
         if not match:
             return None
         message = match["message"]
@@ -283,8 +293,15 @@ def _web(family: str, body: str):
         missing = re.fullmatch(r'(?:open\(\) ".*" failed|".*" is not found) \(2: No such file or directory\)', message)
         category = _probe(request["path"]) if request and missing else None
         return ("path_probe", _ip(match["ip"]), category) if category else None
-    match = re.match(r"(?:\[(?!client )[^\]]+\]\s+)*\[client (?P<ip>\[[^\]]+\](?::\d+)?|[^\]]+)\]\s+(?:AH\d+: )?(?P<message>.*)", body)
-    if match and re.match(r"(?:user .*?(?: not found|: (?:authentication failure|password mismatch))|wrong authentication scheme|client denied by server configuration|authorization failure)\b", match["message"], re.I):
+    match = re.match(r"(?:\[(?!client )[^\]]+\]\s+)*"
+                     r"\[client (?P<ip>\[[^\]]+\](?::\d+)?|[^\]]+)\]\s+"
+                     r"(?:AH\d+: )?(?P<message>.*)", body)
+    if match and re.match(
+        r"(?:Digest: )?(?:user .*?(?: not found|: (?:authentication failure|password mismatch|authorization failure))"
+        r"|(?:client used )?wrong authentication scheme|client denied by server configuration"
+        r"|authorization failure|Authorization of user .* to access .* failed, reason:)(?=\W|$)",
+        match["message"], re.I,
+    ):
         return "apache_http_authentication_failure", _ip(match["ip"], endpoint=True), None
     return None
 

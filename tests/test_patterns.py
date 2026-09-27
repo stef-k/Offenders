@@ -62,6 +62,10 @@ class PatternTests(unittest.TestCase):
             ("apache", '[auth_basic:error] [pid 12] [client [2001:4860::1]:123] AH01617: user x: authentication failure for "/": Password Mismatch', "apache_http_authentication_failure", "2001:4860::1"),
             ("apache", '[authz_core:error] [client 8.8.8.8] AH01630: client denied by server configuration: /', "apache_http_authentication_failure", "8.8.8.8"),
             ("apache", '[error] [client 8.8.8.8] wrong authentication scheme: /', "apache_http_authentication_failure", "8.8.8.8"),
+            ("apache", '[auth_basic:error] [client 8.8.8.8] AH01614: client used wrong authentication scheme: /', "apache_http_authentication_failure", "8.8.8.8"),
+            ("apache", '[authz_core:error] [client 8.8.8.8] AH01631: user x: authorization failure for "/"', "apache_http_authentication_failure", "8.8.8.8"),
+            ("apache", '[error] [client 8.8.8.8] Authorization of user x to access /private failed, reason: file owner does not match.', "apache_http_authentication_failure", "8.8.8.8"),
+            ("apache", '[error] [client 8.8.8.8] Digest: user x: password mismatch: /', "apache_http_authentication_failure", "8.8.8.8"),
             ("ssh", "Accepted password for x from 8.8.8.8", None, None),
             ("ssh", "pam_unix(sshd:session): session opened for user root", None, None),
             ("ssh", 'GET /Failed password for x from 8.8.8.8 HTTP/1.1', None, None),
@@ -138,6 +142,7 @@ class PatternTests(unittest.TestCase):
 
     def test_timestamp_authority_domains_rollover_and_window(self):
         cases = [("ssh", "Dec 31 23:59:59 host sshd: Failed password for x from 8.8.8.8", datetime(2025, 12, 31, 23, 59, 59)),
+                 ("ssh", "2025-01-01T11:22:33 host sshd: Invalid user x from 8.8.8.8", datetime(2025, 1, 1, 11, 22, 33)),
                  ("ssh", "2026-01-01T11:22:33 host sshd: Invalid user x from 8.8.8.8", datetime(2026, 1, 1, 11, 22, 33)),
                  ("nginx", '2026/01/01 11:22:33 [error] 1#0: *1 user "x": password mismatch, client: 8.8.8.8, server: h', datetime(2026, 1, 1, 11, 22, 33)),
                  ("apache", '[Thu Jan 01 11:22:33.123456 2026] [error] [client 8.8.8.8] user x not found: /', datetime(2026, 1, 1, 11, 22, 33, 123456)),
@@ -162,6 +167,34 @@ class PatternTests(unittest.TestCase):
         unknown = next(g for g in result.groups if g.timestamp_basis == "unknown")
         self.assertIsNone(unknown.first_seen)
 
+    def test_distinct_signatures_domains_and_collection_health(self):
+        context = "host proftpd[12]: host (remote[8.8.8.8]) - "
+        supplied = snapshot([context + "USER x (Login failed)",
+                             context + "SECURITY VIOLATION: root login attempted"], source("proftpd"))
+        self.assertEqual(len(patterns.analyze_patterns(supplied).groups), 2)
+        message = "Failed password for x from 8.8.8.8"
+        supplied = snapshot([message, "Jan 01 10:00:00 " + message,
+                             "2026-01-01T10:00:00+00:00 " + message,
+                             "2026-99-99T10:00:00 " + message], source("ssh"))
+        result = patterns.analyze_patterns(supplied)
+        self.assertEqual({g.timestamp_basis for g in result.groups}, {"unknown", "local_wall", "utc"})
+        self.assertEqual(sum(g.event_count for g in result.groups), 4)
+        partial = replace(supplied.sources[0], state="partial", truncated=True,
+                          limitations=("compressed rotation not collected",))
+        supplied = replace(supplied, sources=(partial,), truncated=True)
+        result = patterns.analyze_patterns(supplied)
+        for limitations in [result.analyses[0].limitations, *(g.limitations for g in result.groups)]:
+            self.assertIn("compressed rotation not collected", limitations)
+            self.assertIn("snapshot evidence truncated", limitations)
+        shared = replace(source("ssh"), associations=source("ssh").associations +
+                         (SourceAssociation("vsftpd", "active", "fixture"),))
+        result = patterns.analyze_patterns(snapshot(
+            [message, 'vsftpd: [guest] FAIL LOGIN: Client "8.8.8.8"'], shared))
+        self.assertEqual([(a.family, a.recognized_event_count, a.ignored_record_count)
+                          for a in result.analyses], [("ssh", 1, 1), ("vsftpd", 1, 1)])
+        unassociated = replace(source("ssh", "/var/log/auth.log"), associations=())
+        self.assertFalse(patterns.analyze_patterns(snapshot([message], unassociated)).events)
+
     def test_states_limitations_examples_and_no_acquisition(self):
         lines = [f"Failed password for {'é' * 300}{i} from 8.8.8.8" for i in range(5)]
         supplied = snapshot(lines, source("ssh"))
@@ -176,10 +209,11 @@ class PatternTests(unittest.TestCase):
         group = result.groups[0]
         self.assertEqual(result.analyses[0].state, "partial")
         self.assertEqual(len(group.examples), 3)
+        self.assertEqual(group.examples, tuple(line.encode()[:512].decode(errors="ignore") for line in lines[:3]))
         self.assertTrue(all(len(e.encode()) <= 512 for e in group.examples))
         self.assertEqual(len(group.limitations), 32)
         self.assertTrue(all(len(e.encode()) <= 300 for e in group.limitations))
-        self.assertTrue(any("limit" in e for e in group.limitations))
+        self.assertIn("limitations capped (count or UTF-8 byte limit)", group.limitations)
         for state in ("unavailable", "skipped"):
             empty = snapshot([], source("ssh"))
             empty = replace(empty, sources=(replace(empty.sources[0], state=state),))

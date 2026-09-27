@@ -404,6 +404,30 @@ per-source record ordering, and explicit skipped/unavailable/partial/truncated
 outcomes. Global retention stops at 10,000 records or 8 MiB of UTF-8 text, with
 16 KiB per record. File line bodies preserve CR and other raw characters but omit
 the LF delimiter. No unified file/journal event chronology is inferred.
+`offenders_patterns.analyze_patterns(evidence_snapshot)` consumes that exact #30
+snapshot in memory, retaining it in a frozen pattern inventory without acquisition
+or dashboard integration. Its small explicit format catalog recognizes SSH,
+Dovecot, vsftpd, ProFTPD, and English Pure-FTPd authentication failures, plus
+Nginx/Apache HTTP-auth failures and specific rejected path-probe categories.
+Caddy is explicitly unsupported. Ordinary unrelated 404s, successful HTTP access,
+and unrecognized lines are ignored; this is not general anomaly detection.
+Only supplied source-family associations authorize recognition. Groups use stable
+semantic signatures and canonical source scopes: resolved-file aliases collapse,
+while journal units and file/journal backends remain separate. Counts measure
+recognized log records, not unique sessions. IPv4-mapped IPv6 normalizes to IPv4;
+distinct global/non-global IP counts use `ipaddress.is_global` without judgments
+about trust or maliciousness. One-event groups remain available to #33, which owns
+recurrence thresholds, coverage correlation, and finding decisions.
+Structured journal and explicit-offset file times use UTC; aware events outside
+the supplied interval are excluded. Local file times remain naive wall-clock
+values, with only the year inferred for RFC3164, and cannot enforce the UTC window.
+Missing/malformed event times remain unknown; file mtime and collection time are
+never substituted. Each time basis groups separately. Source-family analyses
+retain partial/truncated/unavailable/skipped evidence and distinguish ignored
+records from recognized records excluded by the UTC window. Output ordering uses
+source/family/signature/time basis and backend record identities, not text hashes.
+Groups keep at most three examples of 512 UTF-8 bytes each; source/group/event
+limitations retain at most 32 details of 300 bytes each, marking caps explicitly.
 Source execution requires the packaged `offenders*.py` modules together.
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
