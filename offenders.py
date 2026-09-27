@@ -6,6 +6,7 @@ import datetime as dt
 import ipaddress
 import shutil
 import subprocess
+import sys
 import threading
 from typing import List, Optional, Tuple
 
@@ -514,10 +515,18 @@ class OffendersApp(App):
             last_bans.add_row("", "", "", "(no ban lines in selected period)")
 
 
-def main() -> None:
-    """Launch the dashboard from the installed command or source checkout."""
+def main(argv=None):
+    """Keep the default dashboard launch and dispatch explicit GeoIP commands."""
+    args = sys.argv[1:] if argv is None else argv
+    if args:
+        from offenders_geoip_cli import main as geoip_main
+        if args[0] == "geoip":
+            return geoip_main(args[1:])
+        print("Usage: offenders [geoip {status,update,auto on|off}]", file=sys.stderr)
+        return 2
     OffendersApp().run()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
