@@ -126,6 +126,12 @@ class ConfigTests(unittest.TestCase):
             result = discover_coverage(snapshot(source("/a")), config_root=self.root)
         self.assertEqual(result.targets[0].classification, "insufficient_evidence")
         self.assertTrue(any("jail.local" in error for error in result.static.limitations))
+        with patch("offenders_coverage.get_jail_list", return_value=["custom-running"]), \
+                patch("offenders_coverage.get_jail_sources", return_value=JailSources(
+                    "custom-running", ("/a",), None, (), {"journalmatch": Fail2BanParseError("bad")})):
+            covered = discover_coverage(snapshot(source("/a")), config_root=self.root)
+        self.assertEqual(covered.targets[0].classification, "covered_enabled")
+        self.assertTrue(covered.targets[0].limitations)
         with patch("offenders_coverage.os.open", side_effect=PermissionError("denied")):
             result = discover_static(self.root)
         self.assertTrue(any("denied" in error for error in result.limitations))
@@ -214,3 +220,34 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(config=config), patch("offenders_coverage.get_jail_list", return_value=[]):
                 result = discover_coverage(supplied, config_root=self.root)
             self.assertEqual(result.targets[0].classification, "insufficient_evidence")
+
+    def test_includes_preserve_family_candidates_but_not_complete_negatives(self):
+        self.write("jail.conf", "[INCLUDES]\nbefore=paths-common.conf\n"
+                   "[DEFAULT]\nenabled=false\nfilter=%(__name__)s\n"
+                   "[sshd]\nlogpath=%(auth_log)s\n")
+        self.write("filter.d/sshd.conf", "[INCLUDES]\nbefore=common.conf\n[Definition]\n")
+        with patch("offenders_coverage.get_jail_list", return_value=[]):
+            result = discover_coverage(snapshot(source("/auth"), source("/ftp", "vsftpd")),
+                                       config_root=self.root)
+        self.assertEqual(result.targets[0].classification, "available_disabled")
+        self.assertEqual(result.targets[1].classification, "insufficient_evidence")
+        self.assertTrue(result.static.limitations)
+
+    def test_literal_matches_never_expand_or_invent_units_and_order_is_stable(self):
+        self.write("jail.conf", "[custom]\nenabled=false\nfilter=custom\nlogpath=/site/*.log\n")
+        self.write("filter.d/custom.local", "[Definition]\njournalmatch=_SYSTEMD_UNIT=other.service\n")
+        supplied = snapshot(source("/site/access.log"), source("/site/nested/access.log"),
+                            source("ssh.service", kind="journal"))
+        runtime = JailSources("sshd", (), "SYSLOG_IDENTIFIER=sshd", ())
+        with patch("offenders_coverage.get_jail_list", return_value=["sshd"]), \
+                patch("offenders_coverage.get_jail_sources", return_value=runtime):
+            first = discover_coverage(supplied, config_root=self.root)
+            second = discover_coverage(replace(supplied, sources=tuple(reversed(supplied.sources))),
+                                       config_root=self.root)
+        self.assertEqual(first.targets, second.targets)
+        self.assertEqual([row.classification for row in first.targets],
+                         ["available_disabled", "no_obvious_match", "insufficient_evidence"])
+        self.write("filter.d/custom.local", "[Definition]\njournalmatch=_SYSTEMD_UNIT=other.service %(unknown)s\n")
+        with patch("offenders_coverage.get_jail_list", return_value=[]):
+            result = discover_coverage(snapshot(source("ssh.service", kind="journal")), config_root=self.root)
+        self.assertEqual(result.targets[0].classification, "insufficient_evidence")

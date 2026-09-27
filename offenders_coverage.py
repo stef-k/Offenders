@@ -76,6 +76,7 @@ class StaticInventory:
     filters: tuple[FilterDefinition, ...]
     fragments: tuple[ConfigFragment, ...]
     limitations: tuple[str, ...]
+    jail_reads_complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -274,8 +275,8 @@ def _filter(name: str, paths: list[Path], reader: _ConfigReader) -> FilterDefini
     value = fields.get("journalmatch", "")
     raw = _raw(value, limitations)
     units = journal_units(value) if len(value) <= RAW_LIMIT else ()
-    if value and not units:
-        limitations.append("Filter journal expression has no literal unit identity")
+    if value and (not units or re.search(r"[%<>$`]", value)):
+        limitations.append("Filter journal source relationship is not fully resolved")
     fragments = tuple(reader.fragments[start:])
     return FilterDefinition(name, any(not row.limitations for row in fragments),
                             raw, () if errors else units, fragments, tuple(limitations))
@@ -287,7 +288,7 @@ def discover_static(root: Path = Path("/etc/fail2ban")) -> StaticInventory:
     try:
         root = root.resolve(strict=True)
     except (OSError, RuntimeError) as error:
-        return StaticInventory((), (), (), (f"Configuration root unavailable: {error}"[:300],))
+        return StaticInventory((), (), (), (f"Configuration root unavailable: {error}"[:300],), False)
     paths, errors = _config_paths(root)
     reader = _ConfigReader(root)
     jail_paths = [path for path in paths if path.parent != root / "filter.d"]
@@ -298,6 +299,7 @@ def discover_static(root: Path = Path("/etc/fail2ban")) -> StaticInventory:
                  1 if path.suffix == ".conf" else 3)
         return layer, path.name
     defaults, sections, origins, jail_errors = _merge(sorted(jail_paths, key=precedence), reader)
+    jail_reads_complete = not errors and not any(row.limitations for row in reader.fragments)
     jails = tuple(_jail(name, {**defaults, **fields},
                         tuple(dict.fromkeys(origins.get("DEFAULT", []) + origins[name])))
                   for name, fields in sorted(sections.items()))
@@ -308,7 +310,7 @@ def discover_static(root: Path = Path("/etc/fail2ban")) -> StaticInventory:
                     for name in filter_names)
     read_errors = tuple(error for fragment in reader.fragments for error in fragment.limitations)
     return StaticInventory(jails, filters, tuple(reader.fragments),
-                           tuple(sorted(set(errors + jail_errors + read_errors))))
+                           tuple(sorted(set(errors + jail_errors + read_errors))), jail_reads_complete)
 
 
 def _file_match(source: LogSource, paths: tuple[str, ...], *, patterns: bool = False) -> bool:
@@ -357,8 +359,9 @@ def _target(source: LogSource, association: SourceAssociation | None,
     for jail in running:
         if query in jail.errors:
             limitations.append(f"{jail.name}: {query} unavailable: {jail.errors[query]}"[:300])
-        if source.kind == "journal" and jail.journalmatch and not jail.journal_units:
-            limitations.append(f"{jail.name}: runtime journal expression has no literal unit identity")
+        if (source.kind == "journal" and jail.journalmatch
+                and (not jail.journal_units or re.search(r"[%<>$`]", jail.journalmatch))):
+            limitations.append(f"{jail.name}: runtime journal source relationship is not fully resolved")
     filters = {row.name: row for row in static.filters}
     running_names = {row.name for row in running}
     candidates = []
@@ -375,7 +378,7 @@ def _target(source: LogSource, association: SourceAssociation | None,
         if jail.enabled is True:
             limitations.append(f"{jail.name}: configured-enabled-not-running")
         if (relevance and jail.enabled is False and definition and definition.readable
-                and not static.limitations):
+                and static.jail_reads_complete):
             reason_limits = (("Family relevance only; exact source relationship not proven",)
                              if relevance == "exact stock family catalog" else ())
             candidates.append(DefinitionMatch(jail.name, relevance, reason_limits))
