@@ -39,6 +39,12 @@ def rendered(app):
 class RefreshTests(unittest.IsolatedAsyncioTestCase):
     """Use explicit thread barriers instead of sleep-based overlap assertions."""
 
+    def setUp(self):
+        """Never consume the operator's automatic-update opt-in during tests."""
+        policy = patch("offenders_geoip_ui.read_state", return_value={})
+        policy.start()
+        self.addCleanup(policy.stop)
+
     async def wait_started(self, event):
         """Bound deadlock failures without using time as synchronization."""
         self.assertTrue(await asyncio.to_thread(event.wait, 3))

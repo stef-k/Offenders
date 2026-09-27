@@ -85,7 +85,7 @@ def bounded(error):
 class GeoIPStatus(Static):
     """Own app-lifetime workers so closing diagnostics cannot cancel activation."""
 
-    DEFAULT_CSS = "GeoIPStatus { height: auto; }"
+    DEFAULT_CSS = "GeoIPStatus { height: 1; }"
 
     def __init__(self, refresh_report):
         super().__init__("", id="geoip-status")
@@ -114,7 +114,9 @@ class GeoIPStatus(Static):
     def set_health(self, health):
         """Accept report or post-activation source facts without touching freshness."""
         self.health = health
-        self.update(Text(status_line(health)))
+        line = status_line(health)
+        self.display = bool(line)
+        self.update(Text(line))
         self._redraw()
 
     def _set_state(self, state):
