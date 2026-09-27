@@ -108,7 +108,7 @@ class JailStatusTests(unittest.TestCase):
                 output = (Path(__file__).parent / "fixtures" / filename).read_text()
                 with patch.object(offenders, "_run", return_value=output) as command:
                     self.assertEqual(offenders.get_jail_list(), expected)
-                    command.assert_called_once_with(["sudo", "fail2ban-client", "status"])
+                    command.assert_called_once_with(["fail2ban-client", "status"])
 
     def test_current_bans_not_total_or_failed_attempts(self):
         """Read live zero and representative nonzero counts on both release lines."""
@@ -117,7 +117,7 @@ class JailStatusTests(unittest.TestCase):
                 output = (Path(__file__).parent / "fixtures" / filename).read_text()
                 with patch.object(offenders, "_run", return_value=output) as command:
                     self.assertEqual(offenders.get_currently_banned_for_jail("sshd"), expected)
-                    command.assert_called_once_with(["sudo", "fail2ban-client", "status", "sshd"])
+                    command.assert_called_once_with(["fail2ban-client", "status", "sshd"])
 
     def test_empty_and_unrecognized_status(self):
         """Preserve the current empty/zero fallback for missing status fields."""

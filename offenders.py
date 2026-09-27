@@ -5,12 +5,15 @@ import datetime as dt
 import glob
 import gzip
 import ipaddress
+import logging
+import math
 import os
 import re
 import shutil
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 from typing import Iterable, List, Optional, Tuple
 
 from textual import work
@@ -302,13 +305,74 @@ def geo_lookup(ip: str) -> Tuple[str, str, str]:
 # =========================
 
 
+class CommandFailure(str, Enum):
+    """Stable failure categories for host-command callers."""
+
+    NOT_FOUND = "command-not-found"
+    TIMEOUT = "timeout"
+    NONZERO_EXIT = "non-zero-exit"
+    EXECUTION = "execution-failure"
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Separate captured streams from process status and launch diagnostics."""
+
+    returncode: Optional[int]
+    stdout: str
+    stderr: str
+    failure: Optional[CommandFailure] = None
+    detail: str = ""
+
+
+def run_host_command(
+    args: List[str], *, timeout: float, sudo: bool = False
+) -> CommandResult:
+    """Run an argument array with closed stdin and an explicit finite deadline.
+
+    Sudo uses -n to prohibit password prompts. Timeout kills and reaps the
+    direct child; its exit code is unavailable, but partial output is retained.
+    Missing targets launched through sudo are reported as sudo's non-zero exit.
+    """
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive and finite")
+    if not args or isinstance(args, str):
+        raise ValueError("args must be a non-empty argument array")
+    command = ["sudo", "-n", *args] if sudo else list(args)
+    try:
+        process = subprocess.run(
+            command, stdin=subprocess.DEVNULL, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        # TimeoutExpired carries bytes even when subprocess.run uses text mode.
+        stdout = (error.stdout or b"").decode("utf-8", errors="replace")
+        stderr = (error.stderr or b"").decode("utf-8", errors="replace")
+        return CommandResult(None, stdout, stderr, CommandFailure.TIMEOUT, str(error))
+    except FileNotFoundError as error:
+        return CommandResult(None, "", "", CommandFailure.NOT_FOUND, str(error))
+    except (OSError, ValueError) as error:
+        return CommandResult(None, "", "", CommandFailure.EXECUTION, str(error))
+    failure = CommandFailure.NONZERO_EXIT if process.returncode else None
+    return CommandResult(process.returncode, process.stdout, process.stderr, failure)
+
+
 def _run(cmd: List[str]) -> str:
-    p = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    return (p.stdout or "") + (p.stderr or "")
+    """Read successful Fail2Ban stdout; log failures for diagnosis."""
+    result = run_host_command(cmd, timeout=8, sudo=True)
+    if result.failure is not None:
+        logging.getLogger(__name__).warning(
+            "Host command %r failed: %s (exit=%s): %s",
+            cmd, result.failure.value, result.returncode,
+            result.stderr or result.detail or result.stdout,
+        )
+        return ""
+    return result.stdout
 
 
 def get_jail_list() -> List[str]:
-    out = _run(["sudo", "fail2ban-client", "status"])
+    out = _run(["fail2ban-client", "status"])
     m = re.search(r"Jail list:\s*(.*)", out)
     if not m:
         return []
@@ -316,7 +380,7 @@ def get_jail_list() -> List[str]:
 
 
 def get_currently_banned_for_jail(jail: str) -> int:
-    out = _run(["sudo", "fail2ban-client", "status", jail])
+    out = _run(["fail2ban-client", "status", jail])
     m = re.search(r"Currently banned:\s*(\d+)", out)
     return int(m.group(1)) if m else 0
 

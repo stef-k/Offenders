@@ -21,7 +21,7 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
   compatibility currently qualified against the 1.0.x and 1.1.x status contracts
   used by Offenders) and logging to:
   - `/var/log/fail2ban.log` (plus rotated logs)
-- Ability to run `fail2ban-client` (the app uses `sudo fail2ban-client ...`)
+- Ability to run `fail2ban-client` (the app uses `sudo -n fail2ban-client ...`)
 
 ### Python dependencies
 
@@ -163,9 +163,24 @@ sudo /usr/bin/python3 /usr/local/bin/update_geoip_db.py --keep-last 6
 
 DB-IP Lite downloads page: <https://db-ip.com/db/lite.php>
 
+### Bounded Fail2Ban status commands
+
+Each Fail2Ban status call has an eight-second timeout, closed standard input,
+and uses an argument array without a shell. The reusable runner preserves exit
+code, stdout, and stderr separately and distinguishes missing executable,
+timeout, non-zero exit, and OS execution failure. Timeout retains partial output
+and kills/reaps the direct child. A missing target behind sudo is reported as
+sudo's non-zero exit, with its stderr retained.
+
+Failed status calls are logged and retain the existing empty-list/zero fallback;
+richer unavailable-state reporting is separate work. Other tools (GeoIP, WHOIS,
+and the updater) are outside this migration.
+
 ### Avoid sudo password prompts
 
-Because the app calls `sudo fail2ban-client ...`, you’ll typically want to allow passwordless access for `fail2ban-client` via `sudoers`.
+Because the app calls `sudo -n fail2ban-client ...`, you’ll typically want to allow passwordless access for `fail2ban-client` via `sudoers`.
+
+The app never requests a sudo password; denied access fails immediately.
 
 Edit safely with `visudo` and add something like:
 
@@ -190,7 +205,7 @@ offenders
 
 From the checkout, `python offenders.py` and `./offenders.py` also work with that
 environment active. Run as the user with log-read and Fail2Ban permissions; the
-application still invokes `sudo fail2ban-client` for jail status.
+application still invokes `sudo -n fail2ban-client` for jail status.
 
 ## Key bindings
 
