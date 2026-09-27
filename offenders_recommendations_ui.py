@@ -139,7 +139,7 @@ class RecommendationsScreen(Screen):
         super().__init__()
         self.inventory: FindingInventory | None = None
         self.decisions: dict[str, FindingDecision] = {}
-        self._closed = False
+        self._delivery_closed = False
 
     def compose(self) -> ComposeResult:
         """Keep long selected evidence independently scrollable."""
@@ -170,7 +170,7 @@ class RecommendationsScreen(Screen):
 
     def _complete(self, inventory: FindingInventory | None, error: str | None) -> None:
         """A closed/unmounted view cannot publish into a later screen."""
-        if self._closed or not self.is_mounted:
+        if self._delivery_closed or not self.is_mounted:
             return
         summary = self.query_one("#coverage-summary", Static)
         if error is not None:
@@ -202,10 +202,10 @@ class RecommendationsScreen(Screen):
 
     def action_close(self) -> None:
         """Stop result delivery immediately, before asynchronous removal finishes."""
-        self._closed = True
+        self._delivery_closed = True
         self.workers.cancel_node(self)
         self.dismiss()
 
     def on_unmount(self) -> None:
         """Also guard removal paths other than the local close bindings."""
-        self._closed = True
+        self._delivery_closed = True
