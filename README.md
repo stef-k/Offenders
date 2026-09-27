@@ -144,10 +144,12 @@ ambiguity cannot be recovered.
 `Report.events` is the selected history used for counts, rankings, and Last bans.
 `Report.ban_lines` is only a derived raw-text compatibility view. Private,
 loopback, and link-local filtering applies to rankings, not total/history counts.
-The Last bans table retains its second-resolution display. The default seven-day
-selection still includes the entire cutoff calendar date; runtime range controls
-and hour-precise selection are not introduced here. Live jail status remains
-independent of historical events.
+The Last bans table retains its second-resolution display. Press `p` to cycle `1h -> 24h -> 7d -> 30d -> all -> 1h`.
+The default `7d` is an exact rolling 168-hour window; `30d` is 720 hours.
+Finite windows include both the exact lower boundary and the single captured
+local report time, excluding future events. `all` includes every parsed event
+available in the configured logs without time boundaries. Live jail status
+remains independent of historical events.
 
 ### Structured Fail2Ban status and bounded commands
 
@@ -210,13 +212,17 @@ application still invokes `sudo -n fail2ban-client` for jail status.
 
 ## Refresh behavior
 
-Mount, the 30-second timer, and manual refresh share one active report build.
+Mount, the 30-second timer, manual refresh, GeoIP post-update refresh, and period
+changes share one active report build.
 Timer ticks during a build are skipped; pressing `r` displays “Refresh already
-in progress” without cancelling or queuing work. Collection runs off the UI thread.
+in progress” without cancelling or queuing work. The same applies to `p`.
+Collection runs off the UI thread. A period change commits only after successful
+recomputation; failure retains the prior period and tables. Other refreshes use
+the committed period. Each build reads/parses logs once and selects events in memory.
 
 A failed refresh preserves all tables and the last-success timestamp. The summary
 shows the failure time, category, bounded detail, and that displayed data comes
-from the last successful refresh. Before the first success, tables remain empty
+from the last successful refresh, including its period. Before the first success, tables remain empty
 and the summary explicitly says data is unavailable. The next successful refresh
 replaces the report and clears the degraded state. Valid zero counts remain
 successful data. There are no retries or queued refreshes.
@@ -227,6 +233,7 @@ Global:
 
 - `q` — quit
 - `r` — refresh now
+- `p` — cycle Period (first press from default `7d` requests `30d`)
 - `t` — toggle table cursor mode (row/cell)
 - `c` or `x` — copy selection
   - in **row** mode: copies the entire row (tab-separated)
@@ -248,7 +255,6 @@ Modal popup (WHOIS/RDNS output):
 Edit report settings in `offenders_report.py`:
 
 - `TOP_COUNT` — number of offenders to show
-- `LOOKBACK_DAYS` — how many days of bans to include (`0` = all logs)
 - `IGNORE_PRIVATE` — skip private/loopback/link-local IPs
 
 Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
@@ -280,8 +286,8 @@ python -m unittest discover -s tests -v
 The suite uses Python's standard-library `unittest`, temporary log files, and
 local Fail2Ban status fixtures. Running it requires no daemon, root access,
 network access, or GeoIP databases. It covers ban recognition, IP normalization
-and local-address filtering, numeric gzip rotation ordering, inclusive calendar
-lookback boundaries (`0` includes all dates), and jail/table parsing.
+and local-address filtering, numeric gzip rotation ordering, exact rolling
+period boundaries (`all` includes all parsed events), and jail/table parsing.
 
 The suite also mounts the real Textual dashboard with a fixture report, checks
 table rendering and cursor-mode switching, and quits through the keyboard binding.

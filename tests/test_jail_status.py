@@ -94,9 +94,9 @@ class JailStatusTests(unittest.TestCase):
                     responses = [result] if global_failure else [success('Number of jail: 1\nJail list: sshd'), result]
                     expected = app.Fail2BanCommandError if result.failure else app.Fail2BanParseError
                     with self.subTest(lines=lines, result=result, global_failure=global_failure):
-                        with patch.object(reports, 'collect_report_events', return_value=([parse_ban_event(line) for line in lines], None)), patch.object(app, 'run_host_command', side_effect=responses) as command:
+                        with patch.object(reports, 'collect_ban_events', return_value=[parse_ban_event(line) for line in lines]), patch.object(app, 'run_host_command', side_effect=responses) as command:
                             with self.assertRaises(expected) as caught:
-                                reports.build_report()
+                                reports.build_report(period="all")
                         self.assertEqual(command.call_args_list[0], call(['fail2ban-client', 'status'], timeout=8, sudo=True))
                         if result.failure:
                             self.assertIs(caught.exception.result, result)
@@ -104,8 +104,8 @@ class JailStatusTests(unittest.TestCase):
     def test_report_valid_zero_and_ordered_structured_data(self):
         """Reports retain zero-jail success and structured status in daemon order."""
         for statuses in [[], [app.JailStatus('z', 0, 0, 0, 0, ()), app.JailStatus('a', 1, 2, 3, 4, ())]]:
-            with patch.object(reports, 'collect_report_events', return_value=([], None)), patch.object(reports, 'get_jail_list', return_value=[s.name for s in statuses]), patch.object(reports, 'get_jail_status', side_effect=statuses):
-                report = reports.build_report()
+            with patch.object(reports, 'collect_ban_events', return_value=[]), patch.object(reports, 'get_jail_list', return_value=[s.name for s in statuses]), patch.object(reports, 'get_jail_status', side_effect=statuses):
+                report = reports.build_report(period="all")
             self.assertEqual(report.jail_statuses, statuses)
             self.assertEqual(report.jail_list, [s.name for s in statuses])
             self.assertEqual(report.bans_per_jail, sorted([(s.name, s.currently_banned) for s in statuses], key=lambda pair: pair[1], reverse=True))

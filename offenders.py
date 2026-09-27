@@ -20,24 +20,17 @@ from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
 from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
-from offenders_report import LOOKBACK_DAYS, Report, build_report
+from offenders_report import DEFAULT_PERIOD, PERIODS, Report, build_report
 
 # Do not set lower than 30 seconds as geoip/asn lookups may be slow
 CHECK_INTERVAL_SECONDS = 30
-
-def _format_period(cutoff: Optional[dt.date]) -> str:
-    today = dt.date.today()
-    if cutoff:
-        return f"{cutoff.isoformat()} → {today.isoformat()} (last {LOOKBACK_DAYS} days)"
-    return "all available logs"
 
 
 class SummaryBar(Static):
     def update_from_report(self, r: Report) -> None:
         now = r.generated_at
-        period = _format_period(r.cutoff_date)
         self.update(
-            f"🕒 {now:%Y-%m-%d %H:%M:%S} | 🔢 bans={r.total_bans} | period={period}"
+            f"🕒 {now:%Y-%m-%d %H:%M:%S} | 🔢 bans={r.total_bans} | period={r.period}"
             + f" | reports updating every {CHECK_INTERVAL_SECONDS} seconds"
         )
 
@@ -133,6 +126,7 @@ class OffendersApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
+        ("p", "period", "Period"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
@@ -146,6 +140,7 @@ class OffendersApp(App):
         super().__init__()
         self._refresh_worker: Optional[Worker] = None
         self._build_lock = threading.Lock()
+        self._active_period = DEFAULT_PERIOD
         self._last_success: Optional[dt.datetime] = None
         self.geoip_status = GeoIPStatus(self.refresh_report)
 
@@ -202,7 +197,13 @@ class OffendersApp(App):
         """Manual refresh shares the timer gate but reports skipped requests."""
         self.refresh_report(manual=True)
 
-    def refresh_report(self, *, manual: bool = False) -> None:
+    def action_period(self) -> None:
+        """Request the next fixed period without changing committed report state."""
+        keys = tuple(PERIODS)
+        target = keys[(keys.index(self._active_period) + 1) % len(keys)]
+        self.refresh_report(manual=True, period=target)
+
+    def refresh_report(self, *, manual: bool = False, period: Optional[str] = None) -> None:
         """Schedule at most one build; all callers run on the UI thread."""
         # Cancellation before task startup may leave Textual's state PENDING.
         pending = (
@@ -214,17 +215,17 @@ class OffendersApp(App):
             if manual:
                 self.notify("Refresh already in progress", timeout=2.0)
             return
-        self._refresh_worker = self._collect_report()
+        self._refresh_worker = self._collect_report(period or self._active_period)
 
     @work(thread=True)
-    def _collect_report(self) -> None:
+    def _collect_report(self, period: str) -> None:
         """Keep cancellation from releasing the gate while a thread still builds."""
         worker = get_current_worker()
         with self._build_lock:
             if worker.is_cancelled:
                 return
             try:
-                report = build_report()
+                report = build_report(period=period)
             except Exception as error:
                 if not worker.is_cancelled:
                     self.call_from_thread(self._finish_refresh, worker, None, error)
@@ -258,7 +259,7 @@ class OffendersApp(App):
         if self._last_success is None:
             state = "Unavailable: no successful refresh"
         else:
-            state = f"Showing last successful refresh {self._last_success:%Y-%m-%d %H:%M:%S}"
+            state = f"Showing last successful {self._active_period} refresh {self._last_success:%Y-%m-%d %H:%M:%S}"
         self.query_one("#summary", SummaryBar).update(Text(
             f"Degraded {dt.datetime.now():%Y-%m-%d %H:%M:%S} | {category}: {detail} | {state}"
         ))
@@ -491,6 +492,7 @@ class OffendersApp(App):
         bans_per_jail.clear()
         last_bans.clear()
 
+        self._active_period = r.period
         self._last_success = r.generated_at
 
         summary.update_from_report(r)

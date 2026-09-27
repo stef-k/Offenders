@@ -149,10 +149,10 @@ class GeoIPTests(unittest.TestCase):
         lines = ["2026-09-27 01:00:00 [sshd] Ban 8.8.8.8",
                  "2026-09-27 01:00:01 [sshd] Ban 8.8.4.4"]
         with patch.object(report, "geoip", self.geo), \
-             patch.object(report, "collect_report_events", return_value=([parse_ban_event(line) for line in lines], None)), \
+             patch.object(report, "collect_ban_events", return_value=[parse_ban_event(line) for line in lines]), \
              patch.object(report, "get_jail_list", return_value=[]), \
              patch("subprocess.run", side_effect=AssertionError("No external lookups")):
-            result = report.build_report()
+            result = report.build_report(period="all")
         self.assertEqual(result.top_offenders[0].country, "United States")
         self.assertEqual(result.top_offenders[0].asn, "15169")
         self.assertEqual(result.top_offenders[1].enrichment.country.state, "unmapped")

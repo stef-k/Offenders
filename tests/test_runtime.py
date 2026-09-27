@@ -38,7 +38,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         """Mount the dashboard, render a worker result, toggle mode, and quit."""
         report = Report(
             generated_at=dt.datetime(2026, 9, 27, 12),
-            cutoff_date=None,
+            period="7d",
+            window_start=None,
             events=[BanEvent(dt.datetime(2026, 9, 27, 12), "sshd", "8.8.8.8", "diagnostic")] * 2,
             top_offenders=[Offender("8.8.8.8", 2, "Unknown", "", "No ASN")],
             jail_statuses=[JailStatus("sshd", 0, 0, 2, 2, ("8.8.8.8",))],

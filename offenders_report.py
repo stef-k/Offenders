@@ -21,7 +21,15 @@ LOG_ROTATED = "/var/log/fail2ban.log.1"
 LOG_GZ_GLOB = "/var/log/fail2ban.log.*.gz"
 
 TOP_COUNT = 20
-LOOKBACK_DAYS = 7  # 0 => all available
+# Insertion order is the dashboard cycle order; keys also serve as compact labels.
+PERIODS = {
+    "1h": dt.timedelta(hours=1),
+    "24h": dt.timedelta(hours=24),
+    "7d": dt.timedelta(hours=168),
+    "30d": dt.timedelta(days=30),
+    "all": None,
+}
+DEFAULT_PERIOD = "7d"
 IGNORE_PRIVATE = True  # skip RFC1918/private IPs (and IPv6 equivalents)
 
 # =========================
@@ -44,7 +52,8 @@ class Report:
     """Selected parsed history, enriched rankings, and independent live status."""
 
     generated_at: dt.datetime
-    cutoff_date: Optional[dt.date]  # None if LOOKBACK_DAYS == 0
+    period: str
+    window_start: Optional[dt.datetime]  # None for all available events
     events: List[BanEvent]  # chronological events in the selected period
     top_offenders: List[Offender]
     jail_statuses: List[JailStatus]
@@ -79,17 +88,6 @@ class Report:
         )
 
 
-def collect_report_events(lookback_days: int) -> Tuple[List[BanEvent], Optional[dt.date]]:
-    """Preserve the inclusive calendar-day cutoff until runtime ranges arrive."""
-    cutoff_date = None
-    if lookback_days and lookback_days > 0:
-        cutoff_date = dt.datetime.now().date() - dt.timedelta(days=lookback_days)
-    events = collect_ban_events(LOG_CURRENT, LOG_ROTATED, LOG_GZ_GLOB)
-    if cutoff_date is not None:
-        events = [event for event in events if event.timestamp.date() >= cutoff_date]
-    return events, cutoff_date
-
-
 def filter_private_ips(ips: Iterable[str]) -> List[str]:
     out: List[str] = []
     for ip in ips:
@@ -112,11 +110,16 @@ def filter_private_ips(ips: Iterable[str]) -> List[str]:
 
 def build_report(
     top_count: int = TOP_COUNT,
-    lookback_days: int = LOOKBACK_DAYS,
+    period: str = DEFAULT_PERIOD,
     ignore_private: bool = IGNORE_PRIVATE,
 ) -> Report:
     """Derive counts and enrichment from the selected normalized history."""
-    events, cutoff_date = collect_report_events(lookback_days)
+    duration = PERIODS[period]
+    now = dt.datetime.now()
+    window_start = now - duration if duration is not None else None
+    events = collect_ban_events(LOG_CURRENT, LOG_ROTATED, LOG_GZ_GLOB)
+    if window_start is not None:
+        events = [event for event in events if window_start <= event.timestamp <= now]
 
     jail_statuses = [get_jail_status(jail) for jail in get_jail_list()]
 
@@ -144,8 +147,9 @@ def build_report(
         )
 
     return Report(
-        generated_at=dt.datetime.now(),
-        cutoff_date=cutoff_date,
+        generated_at=now,
+        period=period,
+        window_start=window_start,
         events=events,
         top_offenders=offenders,
         jail_statuses=jail_statuses,
