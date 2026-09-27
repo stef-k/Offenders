@@ -16,4 +16,4 @@ dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4"]
 offenders = "offenders:main"
 
 [tool.setuptools]
-py-modules = ["offenders", "offenders_report", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui"]
+py-modules = ["offenders", "offenders_report", "offenders_events", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui"]

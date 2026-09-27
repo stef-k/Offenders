@@ -20,7 +20,7 @@ from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
 from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
 from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
-from offenders_report import LOOKBACK_DAYS, Report, _parse_ban_line_for_table, build_report
+from offenders_report import LOOKBACK_DAYS, Report, build_report
 
 # Do not set lower than 30 seconds as geoip/asn lookups may be slow
 CHECK_INTERVAL_SECONDS = 30
@@ -515,11 +515,13 @@ class OffendersApp(App):
         else:
             bans_per_jail.add_row("(none)", "0")
 
-        # Last bans table: always show all last 10 lines (clean columns only)
+        # Last bans table: render the normalized history without parsing raw text.
         if r.last_10_bans:
-            for line in r.last_10_bans:
-                d, t, jail, ip = _parse_ban_line_for_table(line)
-                last_bans.add_row(d, t, jail, ip)
+            for event in r.last_10_bans:
+                last_bans.add_row(
+                    event.timestamp.strftime("%Y-%m-%d"),
+                    event.timestamp.strftime("%H:%M:%S"), event.jail, event.ip,
+                )
         else:
             last_bans.add_row("", "", "", "(no ban lines in selected period)")
 

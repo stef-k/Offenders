@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import call, patch
 
 import offenders_fail2ban as app
+from offenders_events import parse_ban_event
+
 import offenders_report as reports
 
 
@@ -86,13 +88,13 @@ class JailStatusTests(unittest.TestCase):
         """Both report paths reject failed global or jail status, including partial stdout."""
         failures = [app.CommandResult(None, fixture('status.txt'), 'diagnostic', kind)
                     for kind in app.CommandFailure]
-        for lines in [[], ['2026-09-27 Ban 8.8.8.8']]:
+        for lines in [[], ['2026-09-27 12:00:00 [sshd] Ban 8.8.8.8']]:
             for result in [*failures, success('malformed')]:
                 for global_failure in [True, False]:
                     responses = [result] if global_failure else [success('Number of jail: 1\nJail list: sshd'), result]
                     expected = app.Fail2BanCommandError if result.failure else app.Fail2BanParseError
                     with self.subTest(lines=lines, result=result, global_failure=global_failure):
-                        with patch.object(reports.os.path, 'isfile', return_value=True), patch.object(reports, 'collect_ban_lines', return_value=(lines, None)), patch.object(app, 'run_host_command', side_effect=responses) as command:
+                        with patch.object(reports, 'collect_report_events', return_value=([parse_ban_event(line) for line in lines], None)), patch.object(app, 'run_host_command', side_effect=responses) as command:
                             with self.assertRaises(expected) as caught:
                                 reports.build_report()
                         self.assertEqual(command.call_args_list[0], call(['fail2ban-client', 'status'], timeout=8, sudo=True))
@@ -102,7 +104,7 @@ class JailStatusTests(unittest.TestCase):
     def test_report_valid_zero_and_ordered_structured_data(self):
         """Reports retain zero-jail success and structured status in daemon order."""
         for statuses in [[], [app.JailStatus('z', 0, 0, 0, 0, ()), app.JailStatus('a', 1, 2, 3, 4, ())]]:
-            with patch.object(reports.os.path, 'isfile', return_value=True), patch.object(reports, 'collect_ban_lines', return_value=([], None)), patch.object(reports, 'get_jail_list', return_value=[s.name for s in statuses]), patch.object(reports, 'get_jail_status', side_effect=statuses):
+            with patch.object(reports, 'collect_report_events', return_value=([], None)), patch.object(reports, 'get_jail_list', return_value=[s.name for s in statuses]), patch.object(reports, 'get_jail_status', side_effect=statuses):
                 report = reports.build_report()
             self.assertEqual(report.jail_statuses, statuses)
             self.assertEqual(report.jail_list, [s.name for s in statuses])

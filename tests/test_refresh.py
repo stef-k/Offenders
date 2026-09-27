@@ -12,6 +12,7 @@ import offenders
 from offenders_fail2ban import (
     CommandFailure, CommandResult, Fail2BanCommandError, Fail2BanParseError, JailStatus,
 )
+from offenders_events import BanEvent
 from offenders_report import Offender, Report
 
 
@@ -19,10 +20,10 @@ def report(count=2):
     """Build distinctive trustworthy data without host collection."""
     return Report(
         generated_at=dt.datetime(2026, 9, 27, 12, count),
-        cutoff_date=None, total_bans=count, ban_lines=[],
+        cutoff_date=None,
+        events=[BanEvent(dt.datetime(2026, 9, 27, 12), "sshd", "8.8.8.8", "diagnostic")] * count,
         top_offenders=[Offender("8.8.8.8", count, "Unknown", "", "No ASN")],
         jail_statuses=[JailStatus("sshd", 0, 0, count, count, ("8.8.8.8",))],
-        last_10_bans=["2026-09-27 12:00:00 [sshd] Ban 8.8.8.8"],
     )
 
 
@@ -109,7 +110,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_initial_failure_is_unavailable_then_zero_is_authoritative(self):
         """No initial failure fabricates counts; a real empty report is valid."""
-        empty = Report(dt.datetime(2026, 9, 27), None, 0, [], [], [], [])
+        empty = Report(dt.datetime(2026, 9, 27), None, [], [], [])
         with patch.object(offenders, "build_report", side_effect=[
             Fail2BanParseError("missing jail field"), empty,
         ]):
