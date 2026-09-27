@@ -132,6 +132,15 @@ class FileEvidenceTests(unittest.TestCase):
             self.assertEqual([row.text for row in snapshot.records], ["a2"])
             self.assertTrue(snapshot.truncated)
 
+    def test_missing_current_keeps_rotation_and_other_source_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, other = Path(directory) / "missing", Path(directory) / "other"
+            Path(str(path) + ".1").write_text("older")
+            other.write_text("current")
+            snapshot = collector().collect(inventory(file_source(path), file_source(other)))
+        self.assertEqual({row.text for row in snapshot.records}, {"older", "current"})
+        self.assertEqual([row.state for row in snapshot.sources], ["partial", "collected"])
+
     def test_large_file_reads_only_tail_and_empty_file_is_collected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "large"
@@ -180,6 +189,17 @@ class JournalEvidenceTests(unittest.TestCase):
         self.assertEqual(snapshot.source_inventory, sources)
         with self.assertRaises(FrozenInstanceError):
             stable.text = "mutate"
+
+    def test_exact_query_limit_is_explicit_and_unicode_line_separator_is_raw(self):
+        output = json.dumps({"__CURSOR": "one", "__REALTIME_TIMESTAMP": "1",
+                             "MESSAGE": "raw\u2028text"}, ensure_ascii=False) + "\n"
+        sources = inventory(LogSource("journal", "unit", "readable"))
+        with patch.object(evidence, "run_host_command", return_value=CommandResult(0, output, "")), \
+                patch.object(evidence, "JOURNAL_LINES", 1):
+            snapshot = collector().collect(sources)
+        self.assertEqual(snapshot.records[0].text, "raw\u2028text")
+        self.assertTrue(snapshot.truncated)
+        self.assertEqual(snapshot.sources[0].state, "partial")
 
     def test_failures_zero_entries_and_custom_window(self):
         sources = inventory(LogSource("journal", "unit", "readable"))

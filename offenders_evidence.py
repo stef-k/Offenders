@@ -156,11 +156,12 @@ def _tail(path: str, limit: int) -> tuple[os.stat_result, int, bytes]:
 def _file_records(info: os.stat_result, start: int, data: bytes,
                   generation: int, work: _SourceWork, budget: _Budget) -> None:
     """Preserve byte offsets and raw line bodies; favor the newest complete lines."""
+    if start:
+        work.note("file tail starts after older evidence", truncated=True)
     if b"\0" in data:
         work.note("binary/unsupported file tail (NUL byte)")
         return
     if start:
-        work.note("file tail starts after older evidence", truncated=True)
         boundary = data.find(b"\n")
         if boundary < 0:
             return
@@ -283,8 +284,10 @@ def _journal(work: _SourceWork, budget: _Budget, since: datetime) -> None:
     if cut:
         work.note("journal stdout tail capped", truncated=True)
         tail = tail.partition(b"\n")[2]
-    lines = tail.decode("utf-8", errors="replace").splitlines()
-    if len(lines) > JOURNAL_LINES:
+    lines = tail.decode("utf-8", errors="replace").split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    if len(lines) >= JOURNAL_LINES:
         work.note("journal entry count capped", truncated=True)
     for index, line in reversed(list(enumerate(lines[-JOURNAL_LINES:]))):
         record = _journal_entry(line, index, work)
@@ -304,7 +307,8 @@ def _snapshot(inventory: LogSourceInventory, collected_at: datetime,
         if work.source.state != "readable" or work.source.kind not in ("file", "journal"):
             work.state = "skipped"
             work.failure = work.source.failure
-            work.note(f"{work.source.state}/{work.source.kind}: {work.source.detail}")
+            reason = "unsupported kind" if work.source.kind not in ("file", "journal") else work.source.state
+            work.note(f"{reason}/{work.source.kind}: {work.source.detail}")
         elif budget.stopped:
             work.note("global evidence budget reached", truncated=True)
         elif work.source.kind == "file":
