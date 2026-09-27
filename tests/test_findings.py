@@ -5,10 +5,10 @@ import unittest
 from unittest.mock import patch
 
 from offenders_coverage import CoverageInventory, CoverageTarget, DefinitionMatch, JailDefinition, StaticInventory
-from offenders_evidence import EvidenceSnapshot
+from offenders_evidence import EvidenceRecord, EvidenceSnapshot, SourceResult
 from offenders_findings import build_findings
 from offenders_host import HostInventory, SourceHealth
-from offenders_patterns import COUNT_NOTE, PatternGroup, PatternInventory, SourceFamilyAnalysis
+from offenders_patterns import COUNT_NOTE, PatternGroup, PatternInventory, SourceFamilyAnalysis, analyze_patterns
 from offenders_sources import LogSource, LogSourceInventory, SourceAssociation
 
 
@@ -150,6 +150,28 @@ class FindingTests(unittest.TestCase):
         self.assertIn("history partial", result.findings[0].limitations)
         self.assertIn("evidence/history was truncated", result.findings[0].limitations)
         self.assertIn("UTC lookback", " ".join(result.findings[0].limitations))
+
+    def test_recognized_records_flow_through_canonical_join(self):
+        patterns, coverage = fixture(disabled=(("ssh-review", "sshd"),))
+        source = coverage.source_inventory.sources[0]
+        records = tuple(EvidenceRecord(("file", index), True, (("file", source.identity),),
+            f"Failed password for user{index} from 8.8.8.8 port 22") for index in range(3))
+        evidence = replace(patterns.evidence_snapshot, records=records, sources=(SourceResult(
+            source, "collected", tuple(row.identity for row in records), False, ()),))
+        recognized = analyze_patterns(evidence)
+        result = build_findings(recognized, coverage)
+        self.assertEqual(result.findings[0].classification, "existing_disabled_candidate")
+        self.assertEqual(result.findings[0].group.source_identity, "/real")
+        self.assertEqual(result.findings[0].group.event_count, 3)
+        self.assertEqual(result.findings[0].group.global_source_ip_count, 1)
+        self.assertIs(result.findings[0].group, recognized.groups[0])
+        missing = replace(coverage.source_inventory, sources=(replace(source, associations=()),))
+        self.assertEqual(build_findings(replace(recognized, evidence_snapshot=replace(evidence,
+            source_inventory=missing)), replace(coverage, source_inventory=missing)).decisions[0].classification,
+            "insufficient_evidence")
+        unresolved = replace(coverage, static=replace(coverage.static,
+            jails=(replace(coverage.static.jails[0], filter_stem=None),)))
+        self.assertFalse(build_findings(recognized, unresolved).findings)
 
     def test_order_bounds_and_no_io(self):
         patterns, coverage = fixture(disabled=(("z", "sshd"), ("a", "sshd")))
