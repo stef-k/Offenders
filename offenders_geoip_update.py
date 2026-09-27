@@ -154,7 +154,11 @@ def _activate(root, stage, month):
     generations.mkdir(exist_ok=True)
     destination = generations / f"{month}-{uuid.uuid4().hex}"
     current = root / "current"
-    previous = current.resolve() if current.is_symlink() else None
+    try:
+        previous = current.resolve() if current.is_symlink() else None
+    except (OSError, RuntimeError):
+        # A broken reference has no preservable target; replace the link itself.
+        previous = None
     link = root / "current.tmp"
     os.replace(stage, destination)
     try:

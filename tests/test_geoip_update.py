@@ -91,6 +91,28 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(all(p.read_text() == "legacy" for p in legacy.iterdir()))
         self.assertFalse(list(self.root.glob(".staging-*")))
 
+    def test_update_recovers_cyclic_current_from_legacy_fallback(self):
+        """Explicit update repairs a broken managed link without touching legacy."""
+        self.root.mkdir()
+        (self.root / "current").symlink_to("current")
+        legacy = Path(self.temp.name) / "legacy"
+        legacy.mkdir()
+        for role in updater.KINDS:
+            (legacy / f"dbip-{role}-lite.mmdb").write_text("legacy")
+        service = geo.GeoIP(self.root, legacy)
+        self.addCleanup(service.close)
+        self.assertTrue(all(health.fallback for health in service.refresh().values()))
+        self.assertEqual(service.lookup("8.8.8.8").country.value, "legacy")
+
+        self.assertEqual(self.run_update(), "2026-09")
+
+        active = (self.root / "current").resolve(strict=True)
+        self.assertEqual(active.parent, self.root / "generations")
+        self.assertTrue(all(health.source == "app-managed"
+                            for health in service.refresh().values()))
+        self.assertEqual(service.lookup("8.8.8.8").country.value, "DBIP-country")
+        self.assertTrue(all(path.read_text() == "legacy" for path in legacy.iterdir()))
+
     def test_failure_matrix_preserves_current_and_cleans_staging(self):
         self.run_update()
         active = (self.root / "current").resolve()
