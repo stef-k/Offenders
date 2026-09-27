@@ -252,6 +252,7 @@ Edit report settings in `offenders_report.py`:
 - `TOP_COUNT` — number of offenders to show
 - `LOOKBACK_DAYS` — how many days of bans to include (`0` = all logs)
 - `IGNORE_PRIVATE` — skip private/loopback/link-local IPs
+
 Edit `CHECK_INTERVAL_SECONDS` in `offenders.py` for the refresh interval.
 Log paths and GeoIP database paths are configured in `offenders_report.py`.
 
@@ -269,7 +270,6 @@ reports import Fail2Ban status. Source execution requires all three files togeth
 
 Code Guard uses its normal policy without a large-file exemption: 600 counted
 LOC is the hard gate and files above 400 counted LOC require cohesion review.
-
 
 After installing the project in your virtual environment, run:
 
