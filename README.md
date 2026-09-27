@@ -239,10 +239,25 @@ Global:
   - in **row** mode: copies the entire row (tab-separated)
   - in **cell** mode: copies the current cell
 
+Dashboard summary:
+
+- `v` cycles **IP → ASN → Country → IP**, only on the dashboard.
+- IP retains the existing top-N ranking and `IGNORE_PRIVATE` policy.
+- ASN/Country count all committed-period `Report.events`, including repeated bans,
+  private/local addresses, and IPs outside top-N. Their totals can therefore exceed
+  the visible IP-row total. Each row shows bans and distinct IPs.
+- Mapped values, healthy **Unmapped**, and **Unavailable** are separate buckets;
+  Country and ASN database outcomes are independent.
+- Projection is lazy, local, and off the UI loop. It reuses structured top-offender
+  enrichment and performs one local lookup per remaining unique IP. Both views
+  share a snapshot until the next successful report; failures retain prior data.
+- Aggregate rows support row/cell copy, but no IP inspector, WHOIS, or RDNS.
+  **Last bans** remains independently IP-navigable and supports those tools.
+
 Dashboard filter:
 
 - `f` focuses the single-line Filter; typing immediately narrows **Top banned IPs**
-  and **Last bans** using a trimmed, case-insensitive literal substring.
+  (or the active aggregate summary) and **Last bans** using a trimmed, case-insensitive literal substring.
 - Search loaded IP, jail, Country, ASN (including `AS123`), and organization fields.
   Last bans reuse enrichment only for IPs already in Top banned IPs and remain
   limited to the loaded last ten events. Counts and row ordering are unchanged.
@@ -250,6 +265,9 @@ Dashboard filter:
   Deleting the text also restores all loaded rows. No matches is a safe empty state.
 - The visible query survives successful refreshes and period changes; failures
   retain the last successful filtered rows. It is not saved between runs.
+- Aggregate filtering only hides rows: matching one member IP, jail, Country,
+  ASN, or organization shows the entire bucket with its full-period counts.
+  It never filters events or recomputes counts, nor restarts a pending projection.
 - Filtering performs no I/O or report rebuilds, even during collection. Live jail
   status and investigation screens retain their unfiltered full-period context.
   `f` is dashboard-only.
