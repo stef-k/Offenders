@@ -100,10 +100,27 @@ nor pruning modify legacy system files. Status reports each source and candidate
 health, including fallback failures, along with the active generation and policy.
 
 `state.json` records opt-in (default off), last check time, and outcome. The shared
-engine exposes a due check and a locked automatic-update call for #18: disabled
-or less-than-24-hour checks do not access the network. Manual updates always run
-and also record check time. No scheduler or TUI controls are included yet; opting
-in alone starts no network activity. Import, lookup, and status never download.
+engine performs a locked automatic check once after dashboard mount when enabled.
+Disabled or less-than-24-hour checks do not access the network. A successfully
+activated current UTC month is not downloaded again automatically that month;
+a previous-month publication fallback can retry after 24 hours. Manual updates
+always run and also record check time. The 30-second report timer never checks
+for updates. Import, lookup, and status never download.
+
+Press **g** for focused GeoIP diagnostics, **u** for an explicit background Update
+now, and **a** to persist automatic updates on/off (default off; enabling takes
+effect at the next launch). Escape or q closes diagnostics. The view shows each
+source, reader, path, generation, local age, policy and latest update outcome.
+The first explicit update consents to downloading into user-owned storage.
+A successful activation reloads health and requests one normal report refresh;
+if collection is already running, the next normal refresh picks it up.
+
+A separate dashboard line warns about unavailable Country/ASN sources or active
+files older than **62 days**. Local age is only a warning; readable data remains
+usable. Healthy legacy fallback and healthy-but-unmapped addresses do not cause
+a global warning. Report freshness/degraded status remains independent. Failed
+updates retain usable active data and show their error separately in diagnostics.
+`offenders_geoip_ui.py` owns this focused UI and its background actions.
 
 `update_geoip_db.py` is now a thin rootless compatibility wrapper. Its old
 system-target, root-cron, logging, and pruning options are retired and rejected.

@@ -181,7 +181,7 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(len(self.urls), 2)
             self.assertIsNone(self.run_update(automatic=True, now=self.now + 86399))
             self.assertEqual(len(self.urls), 2)
-            self.assertTrue(updater.automatic_due(updater.read_state(self.root), self.now + 86400))
+            self.assertFalse(updater.automatic_due(updater.read_state(self.root), self.now + 86400))
             cli.main(["auto", "off"])
             self.assertFalse(updater.automatic_due(updater.read_state(self.root), self.now + 90000))
             with updater.writer_lock(self.root):
@@ -193,3 +193,15 @@ class LifecycleTests(unittest.TestCase):
              patch("sys.stderr", new_callable=io.StringIO) as error:
             self.assertEqual(cli.main(["update"]), 1)
             self.assertIn("offline", error.getvalue())
+
+
+    def test_automatic_current_month_skipped_previous_month_retried(self):
+        """Activated current month needs no repeat; publication fallback can retry."""
+        updater.set_auto(True, self.root)
+        self.run_update(automatic=True)
+        self.assertIsNone(self.run_update(automatic=True, now=self.now + 86400))
+        self.assertEqual(len(self.urls), 2)
+        state = updater.read_state(self.root)
+        state["generation"] = "2026-08"
+        self.assertTrue(updater.automatic_due(state, self.now + 86400))
+        self.assertFalse(updater.automatic_due(state, self.now + 86399))

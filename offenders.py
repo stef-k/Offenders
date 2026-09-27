@@ -18,6 +18,7 @@ from textual.worker import Worker, get_current_worker
 from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
+from offenders_geoip_ui import GeoIPScreen, GeoIPStatus
 from offenders_fail2ban import Fail2BanCommandError, Fail2BanParseError
 from offenders_report import LOOKBACK_DAYS, Report, _parse_ban_line_for_table, build_report
 
@@ -132,6 +133,7 @@ class OffendersApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
+        ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
         ("t", "toggle_cursor", "Row/Cell"),
@@ -145,12 +147,14 @@ class OffendersApp(App):
         self._refresh_worker: Optional[Worker] = None
         self._build_lock = threading.Lock()
         self._last_success: Optional[dt.datetime] = None
+        self.geoip_status = GeoIPStatus(self.refresh_report)
 
     def compose(self) -> ComposeResult:
         yield Header()
 
         with Container(id="body"):
             yield SummaryBar("Unavailable: awaiting first successful refresh", id="summary")
+            yield self.geoip_status
 
             yield Static("🔥 Top banned IPs", classes="section-title")
             yield DataTable(id="offenders")
@@ -189,6 +193,10 @@ class OffendersApp(App):
 
         self.refresh_report()
         self.set_interval(CHECK_INTERVAL_SECONDS, self.refresh_report)
+
+    def action_geoip(self) -> None:
+        """Open focused GeoIP health and lifecycle actions."""
+        self.push_screen(GeoIPScreen(self.geoip_status))
 
     def action_refresh(self) -> None:
         """Manual refresh shares the timer gate but reports skipped requests."""
@@ -486,6 +494,7 @@ class OffendersApp(App):
         self._last_success = r.generated_at
 
         summary.update_from_report(r)
+        self.geoip_status.set_health(r.geoip_health)
         self.sub_title = f"Updated at: {r.generated_at:%Y-%m-%d %H:%M:%S}"
 
         # Top offenders table
