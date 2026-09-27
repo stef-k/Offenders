@@ -17,7 +17,9 @@ Designed for Linux servers running Fail2Ban (e.g. Ubuntu).
 ## Requirements
 
 - Python **3.12+**; the supported server/development baseline is Ubuntu **24.04 LTS** with Python **3.12**.
-- Fail2Ban **1.0.x or 1.1.x** installed separately (production baseline: **1.0.2**) and logging to:
+- Fail2Ban **>= 1.0.2** installed separately (production baseline: **1.0.2**;
+  compatibility currently qualified against the 1.0.x and 1.1.x status contracts
+  used by Offenders) and logging to:
   - `/var/log/fail2ban.log` (plus rotated logs)
 - Ability to run `fail2ban-client` (the app uses `sudo fail2ban-client ...`)
 
