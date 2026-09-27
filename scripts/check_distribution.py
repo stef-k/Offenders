@@ -9,8 +9,6 @@ import tarfile
 import tomllib
 import zipfile
 
-from packaging.requirements import Requirement
-
 
 def normalized(name):
     """Compare distribution identities using Python's package-name rules."""
@@ -19,6 +17,8 @@ def normalized(name):
 
 def check_metadata(raw, project, root):
     """Require the built identity, dependencies, license, and long description."""
+    from packaging.requirements import Requirement
+
     metadata = BytesParser().parsebytes(raw)
     assert normalized(metadata["Name"]) == normalized(project["name"])
     assert metadata["Version"] == project["version"]
