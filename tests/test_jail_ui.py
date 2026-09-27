@@ -163,6 +163,10 @@ class JailDetailTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.press("r")
                 await app.workers.wait_for_complete()
                 self.assertEqual(detail.query_one("#jail-history", DataTable).row_count, 0)
+                detail.query_one("#jail-history", DataTable).focus()
+                with patch.object(app, "_copy_text") as copy:
+                    await pilot.press("c", "x", "t", "c")
+                    copy.assert_not_called()
                 self.assertIn("No historical bans", str(detail.query_one(
                     "#jail-history-summary", Static).content))
                 await pilot.press("escape")

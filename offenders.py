@@ -363,6 +363,8 @@ class OffendersApp(App):
         Returns (row_index, col_index) in display order, if possible.
         Falls back to mapping row/col keys to indices.
         """
+        if not table.row_count:
+            return None
         coord = getattr(table, "cursor_coordinate", None)
         if coord is not None:
             try:
