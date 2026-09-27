@@ -244,11 +244,16 @@ Jail detail:
 - Focus **Active bans per jail**, move to a jail row, and press `Enter` to open it.
 - `Esc` or `q` — return to the jail table, preserving the jail selection when active.
 - `r` and `p` remain available in detail. Successful refreshes update the open jail;
-  failed refreshes retain its last successful status.
+  failed refreshes retain its last successful status, history, and live IP snapshot.
+- `e` — expand jail history from 10 to 50 to 100 to all-in-range events.
+  Expansion survives successful refreshes and period changes; reopening starts at 10.
 
 Jail counters/settings are **current live status**, not period-filtered totals.
-The displayed period is the historical context. Opening or navigating detail
-reuses the latest successful report and performs no additional collection.
+History is filtered by the selected period and shown newest first. Current banned
+IPs are a separate live Fail2Ban snapshot, independent of the historical period.
+An active jail with no current IPs shows `(none)`; an inactive jail shows unavailable.
+Opening, navigating, or expanding detail reuses the latest successful report and
+performs no additional collection.
 
 Network tools (on selected IP):
 
