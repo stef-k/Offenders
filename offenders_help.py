@@ -123,7 +123,7 @@ class HelpScreen(ModalScreen):
         with VerticalScroll(id="help-scroll"):
             yield Static(self.context, id="help-context", markup=False)
             yield Static("Scroll: ↑/↓, PageUp/PageDown, Home/End. Close: Esc/q.", markup=False)
-            yield Static(product_guide(), id="help-guide", markup=False)
+            yield Static(product_guide(self.app.BINDINGS), id="help-guide", markup=False)
             yield Static(self.project_info, id="help-project", markup=False)
         yield OffendersFooter()
 

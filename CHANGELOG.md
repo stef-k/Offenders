@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add global `? Help` with runtime-derived contextual controls, one scrollable
+  mini-manual, current CLI guidance and installed version/project links. Preserve
+  underlying screen state and start no acquisition or network work (#85).
+
 - Add shared spreadsheet-safe CSV report bundles through dashboard `e Export`
   and headless `offenders export`. Retain committed TUI snapshots and copyable
   result paths; acquire exactly one fresh CLI snapshot. Publish four private

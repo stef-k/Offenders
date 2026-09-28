@@ -6,10 +6,11 @@ import runpy
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import DataTable
+from textual.widgets import DataTable, Static
 
 import offenders
 from offenders_fail2ban import JailStatus
+from offenders_help import HelpScreen
 from offenders_events import BanEvent
 from offenders_report import Offender, Report
 
@@ -58,4 +59,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 table.focus()
                 await pilot.press("t")
                 self.assertEqual(table.cursor_type, "cell")
-                await pilot.press("q")
+                await pilot.press("?")
+                self.assertIsInstance(app.screen, HelpScreen)
+                self.assertIn("Current screen: Dashboard", app.screen.context)
+                self.assertIn("Version:", str(app.screen.query_one("#help-project", Static).content))
+                await pilot.press("q", "q")

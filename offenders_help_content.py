@@ -33,8 +33,10 @@ def project_information() -> str:
                       *(f"{label}: {url[:2048]}" for label, url in urls.items())))
 
 
-def product_guide() -> str:
+def product_guide(bindings) -> str:
     """Keep one mini-manual; derive period choices from the report authority."""
+    keys = {binding.action: binding.key_display or binding.key
+            for binding in Binding.make_bindings(bindings)}
     return f"""Quick concepts
 Offenders is a read-only Fail2Ban reporting/investigation tool. The selected historical period and current live jail state describe different facts.
 Reports refresh automatically; a failed refresh preserves the last successful snapshot. The dashboard filter changes visibility only; Unavailable is different from valid zero/empty.
@@ -49,7 +51,7 @@ Jail detail separates live counters/membership from selected-period historical b
 The IP inspector combines committed historical facts, current membership and local GeoIP projection. Registration/RDNS are explicit, separate network actions.
 
 Export
-TUI Export writes the committed report captured when Export was opened, with no new report acquisition. Dashboard filter and summary mode do not change its contents.
+TUI {keys["export"]} Export writes the committed report captured when Export was opened, with no new report acquisition. Dashboard filter and summary mode do not change its contents.
 The CSV bundle contains report.csv, top-offenders.csv, jail-status.csv and ban-events.csv. The default root is ~/offenders-exports/; the exact successful path remains visible and copyable.
 CLI Export instead builds one fresh report and exits; external Usage documentation defines the CSV schemas.
 
@@ -58,7 +60,7 @@ Optional local Country/ASN enrichment; installation downloads no databases. Upda
 Unmapped means a healthy database has no matching entry; unavailable means enrichment could not be obtained.
 
 Registration and RDNS
-Registration uses RDAP; RDNS uses reverse DNS/PTR. Both are explicit network requests; non-global Registration skips network traffic.
+{keys["registration"]} Registration uses RDAP; {keys["rdns"]} RDNS uses reverse DNS/PTR. Both are explicit network requests; non-global Registration skips network traffic.
 Results are bounded factual lookup output, not reputation scoring.
 
 Coverage and validation

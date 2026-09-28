@@ -13,6 +13,8 @@ databases; the current application uses the Registration label and shared activi
 
 - Export a committed report with `e`, or acquire one fresh CSV bundle with
   `offenders export --period 30d` (see [Usage](docs/usage.md#csv-export)).
+- Press `? Help` from any product screen for contextual controls and a concise
+  in-app guide; `Esc/q` returns to your place.
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
 - Review Coverage evidence and explicitly validate copy-only filter candidates.
