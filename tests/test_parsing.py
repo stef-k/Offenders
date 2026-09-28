@@ -40,6 +40,30 @@ class ParsingTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertIsNone(events.parse_ban_event(line))
 
+    def test_wall_clock_boundaries(self):
+        """Clock limits, fractions, and calendar validity are runtime-independent."""
+        for clock, expected in (
+            ("00:00:00", dt.datetime(2024, 2, 29)),
+            ("23:59:59", dt.datetime(2024, 2, 29, 23, 59, 59)),
+            ("00:00:00,1", dt.datetime(2024, 2, 29, microsecond=100000)),
+            ("23:59:59.999999", dt.datetime(2024, 2, 29, 23, 59, 59, 999999)),
+        ):
+            with self.subTest(clock=clock):
+                event = events.parse_ban_event(f"2024-02-29 {clock} [sshd] Ban 8.8.8.8")
+                self.assertEqual(event.timestamp, expected)
+                self.assertIsNone(event.timestamp.tzinfo)
+        for stamp in (
+            "2024-02-29 24:00:00", "2024-02-29 24:00:00.000000",
+            "2024-02-29 23:60:00", "2024-02-29 23:59:60",
+            "2024-02-29 -1:00:00", "2024-02-29 00:-1:00",
+            "2024-02-29 00:00:-1", "2024-02-29 99:00:00",
+            "2024-02-29 00:00:00.1234567", "2024-02-29 0:00:00",
+            "2023-02-29 00:00:00", "2024-04-31 00:00:00",
+            "2024-13-01 00:00:00", "2024-01-00 00:00:00",
+        ):
+            with self.subTest(stamp=stamp):
+                self.assertIsNone(events.parse_ban_event(f"{stamp} [sshd] Ban 8.8.8.8"))
+
     def test_report_selection_counts_and_compatibility(self):
         """Select rolling history, count parsed IPs, and enrich each top IP once."""
         local = ["10.1.2.3", "172.16.0.1", "192.168.1.1", "127.0.0.1", "169.254.1.1", "fd00::1", "::1", "fe80::1"]
