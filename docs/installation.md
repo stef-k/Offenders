@@ -9,12 +9,6 @@ title: Installation and permissions
 The supported baseline is **Ubuntu 24.04 LTS / Python 3.12+**, with separately
 installed **Fail2Ban >=1.0.2**. pipx installs Python dependencies automatically.
 
-The pre-v0.3 investigation retains that baseline. Ubuntu 26.04 is not yet claimed
-because its default Python exposed a report-parser incompatibility. Debian 13
-passed the application suite, but successful live Fail2Ban/systemd integration
-remains unverified. Ubuntu 22.04's default Python and Fail2Ban are below both
-floors; no alternate stack is supported. See [qualification evidence](qualification-98.md).
-
 The dashboard needs Fail2Ban file logs and permission to read them. Defaults are
 `/var/log/fail2ban.log`, its `.1` rotation, and `.N.gz` rotations. Journal-only
 Fail2Ban logging does not supply the ordinary report history.
