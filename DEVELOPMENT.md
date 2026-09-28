@@ -83,7 +83,21 @@ A worker may use `name="activity:Human label…"`, or the UI thread may call
 shows `Working…`; argument-bearing worker descriptions are never displayed.
 Worker identities preserve overlapping operations. No manual start/stop pairing
 is required. Screen-local detailed feedback remains with its existing owner.
-The base app installs a one-line presenter on every screen, including modals.
+`OffendersFooter` combines the native Textual `Footer` (binding visibility,
+clicks, and horizontal scrolling) with a right-aligned literal `ActivityStatus`.
+Every product screen composes it; the screen-change hook supplies a fallback for
+other screens. Command-output modals use the same footer. Its height stays one
+row; the activity label is ellipsized at 45% of available width so bindings retain
+space on narrow terminals. The old separate top row is removed.
+
+The manager retains one shared presentation deadline using a monotonic clock and
+an app-owned Textual timer. The first activity in a continuous visible interval
+starts a 500 ms minimum hold. Further workers update that presentation without
+restarting the deadline; overlap shows a primary label plus `(+N)`. When no work
+remains, only clearing the label waits for the deadline. Results, cancellation,
+navigation, and single-flight eligibility never wait. New screens inherit the
+held label. After the deadline, any remaining work stays visible until completion.
+The hold acknowledges recently accepted work, not an additional worker lifetime.
 Lookup wording remains in the lookup UI, so backend changes can update both the
 local and shared label together.
 
@@ -94,7 +108,7 @@ updates presentation synchronously before execution; completion removes only its
 own activity, including error and pre-start cancellation. Deferred workers become
 active through `start_all`. Keep lifecycle tests green on Textual upgrades.
 Dismissed screen workers are cancelled by Textual; existing cancellation and
-stale-result guards still protect delivery. Cancellation clears UI activity but
+stale-result guards still protect delivery. Cancellation releases actual activity immediately; the visual hold may remain but
 does not forcibly terminate bounded backend threads or replace backend locks.
 GeoIP's app-lifetime owner continues updating after diagnostics closes.
 

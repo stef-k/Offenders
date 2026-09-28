@@ -4,9 +4,10 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Static
+from textual.widgets import Static
 from textual.worker import get_current_worker
 
+from offenders_activity import OffendersFooter
 from offenders_candidate import CustomCandidate, generate_candidate
 from offenders_validation_ui import validation_detail
 
@@ -64,7 +65,7 @@ class CustomCandidateScreen(Screen):
         """Mount without generating text or starting validation."""
         with VerticalScroll(id="candidate-scroll"):
             yield Static(INITIAL, id="candidate-detail", markup=False)
-        yield Footer()
+        yield OffendersFooter()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Hide copy until a reviewable candidate is actually displayed."""

@@ -13,9 +13,9 @@ from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.worker import Worker, get_current_worker
 from rich.text import Text
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Header, Input, Static
 
-from offenders_activity import ActivityStatus, ActivityWorkers
+from offenders_activity import ActivityWorkers, OffendersFooter
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
 from offenders_recommendations_ui import RecommendationsScreen
@@ -97,7 +97,6 @@ class OffendersApp(App):
         self.geoip_status = GeoIPStatus(self.refresh_report)
 
     def compose(self) -> ComposeResult:
-        yield ActivityStatus()
         yield Header()
 
         with Container(id="body"):
@@ -117,7 +116,7 @@ class OffendersApp(App):
             yield Static("🕒 Last bans from selected logs", classes="section-title")
             yield DataTable(id="last-bans")
 
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         self.screen_change_signal.subscribe(self, self.workers.show_on_screen, immediate=True)

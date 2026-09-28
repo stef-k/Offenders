@@ -11,7 +11,7 @@ from textual.screen import Screen
 from textual.worker import WorkerFailed
 
 from offenders import OffendersApp
-from offenders_activity import ActivityStatus
+from offenders_activity import ActivityStatus, ActivityWorkers, OffendersFooter
 from offenders_ip_ui import CommandOutputModal
 from test_refresh import report, rendered
 
@@ -21,6 +21,9 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         """Keep tests independent of host collection and automatic-update policy."""
+        hold = patch.object(ActivityWorkers, "MINIMUM_VISIBLE", 0)
+        hold.start()
+        self.addCleanup(hold.stop)
         for target, value in (("offenders.build_report", report()),
                               ("offenders_geoip_ui.read_state", {})):
             mock = patch(target, return_value=value)
@@ -76,10 +79,10 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             first = app.screen.run_worker(release.wait)
             second = app.run_worker(release.wait)
-            self.assertIn("Working… (2 active)", self.visible(app))
+            self.assertIn("⏳ Working… (+1)", self.visible(app))
             first.cancel()  # Before its coroutine starts.
             await pilot.pause()
-            self.assertEqual(self.visible(app), "Working…")
+            self.assertEqual(self.visible(app), "⏳ Working…")
 
             async def fail():
                 raise RuntimeError("bounded test failure")
@@ -88,7 +91,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(WorkerFailed):
                 await failed.wait()
             await pilot.pause()
-            self.assertEqual(self.visible(app), "Working…")
+            self.assertEqual(self.visible(app), "⏳ Working…")
             release.set()
             await second.wait()
             await pilot.pause()
@@ -97,7 +100,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
             deferred = app.run_worker(release.wait, start=False)
             self.assertEqual(self.visible(app), "")
             app.workers.start_all()
-            self.assertEqual(self.visible(app), "Working…")
+            self.assertEqual(self.visible(app), "⏳ Working…")
             await deferred.wait()
             await pilot.pause()
             self.assertEqual(self.visible(app), "")
@@ -142,7 +145,78 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
                     else:
                         self.assertEqual(modal._output_text, "bounded answer")
                         self.assertNotIn(label, "".join(line.text for line in modal.query_one("#cmd-out").lines))
-                        await pilot.press("escape")
+                        close = next(key for key in modal.query("FooterKey") if key.key == "escape")
+                        await pilot.click(close)
+                        self.assertIsNot(app.screen, modal)
+
+
+    async def test_presentation_deadline_overlap_navigation_and_geometry(self):
+        """A held label crosses screens; work/results never wait for its deadline."""
+        app = OffendersApp()
+        async with app.run_test(size=(40, 16)) as pilot:
+            await app.workers.wait_for_complete()
+            with patch.object(ActivityWorkers, "MINIMUM_VISIBLE", 0.5), \
+                    patch("offenders_activity.monotonic", return_value=10.0) as clock:
+                before = app.query_one("#body").region
+                delivered = []
+
+                async def fast():
+                    delivered.append("result")
+
+                worker = app.run_worker(fast(), name="activity:Refreshing…")
+                self.assertEqual(self.visible(app), "⏳ Refreshing…")
+                await worker.wait()
+                await pilot.pause()
+                self.assertEqual(delivered, ["result"])
+                self.assertEqual(app.workers.activity_text, "")
+                self.assertEqual(self.visible(app), "⏳ Refreshing…")
+                self.assertEqual(before, app.query_one("#body").region)
+                clock.return_value = 10.49
+                app.workers.refresh_activity()
+                self.assertEqual(self.visible(app), "⏳ Refreshing…")
+                await app.push_screen(Screen())
+                await pilot.pause()
+                self.assertEqual(self.visible(app), "⏳ Refreshing…")
+                release = asyncio.Event()
+                slow = app.screen.run_worker(release.wait, name="activity:Loading a very long detail label…")
+                clock.return_value = 11.0
+                app.workers.refresh_activity()
+                await pilot.pause()
+                footer = app.screen.query_one(OffendersFooter)
+                status = footer.query_one(ActivityStatus)
+                self.assertEqual(footer.region.height, 1)
+                self.assertEqual(footer.region.bottom, 16)
+                self.assertLessEqual(status.region.width, 18)
+                self.assertEqual(status.region.right, 40)
+                self.assertTrue(self.visible(app).startswith("⏳ Loading"))
+                slow.cancel()
+                await pilot.pause()
+                self.assertEqual(self.visible(app), "")
+
+    async def test_real_timer_clears_fast_work_without_delaying_results(self):
+        """Observe the actual clear callback with a causal event, not a sleep."""
+        app = OffendersApp()
+        async with app.run_test() as pilot:
+            await app.workers.wait_for_complete()
+            status = app.screen.query_one(ActivityStatus)
+            cleared = asyncio.Event()
+            original = status.update
+
+            def observe(text):
+                original(text)
+                if not text:
+                    cleared.set()
+
+            with patch.object(ActivityWorkers, "MINIMUM_VISIBLE", 0.5), \
+                    patch.object(status, "update", side_effect=observe):
+                started = asyncio.get_running_loop().time()
+                worker = app.run_worker(asyncio.sleep(0))
+                await worker.wait()
+                self.assertFalse(cleared.is_set())
+                self.assertEqual(self.visible(app), "⏳ Working…")
+                await asyncio.wait_for(cleared.wait(), 2)
+                self.assertGreaterEqual(asyncio.get_running_loop().time() - started, 0.49)
+                self.assertEqual(self.visible(app), "")
 
 
 class AsyncAuditTests(unittest.TestCase):
