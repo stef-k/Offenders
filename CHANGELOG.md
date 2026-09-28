@@ -4,6 +4,8 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-29
+
 - Refresh public investigation/diagnostics positioning, discovery metadata, and
   the current dashboard screenshot using synthetic documentation data (#97).
 
