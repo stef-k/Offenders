@@ -25,7 +25,8 @@ visible Top IP total. Last bans displays the newest ten events.
 Reports refresh at startup, every 30 seconds, and on request. Only one refresh
 runs at a time; a manual refresh or period request while busy reports that refresh
 is in progress and must be retried afterward.
-A period change commits only on success. Failure retains last-known-good tables,
+A shared status line shows `Refreshing…` or a pending target such as `Loading 30d…`
+while the last successful tables remain visible. A period change commits only on success. Failure retains last-known-good tables,
 period, and timestamp with a degraded message; before the first success, data is
 explicitly unavailable. A successful recovery replaces the data and clears the
 warning. Valid zero counts are successful data.
@@ -36,6 +37,17 @@ fields in the summary and Last bans. Last bans enrichment is limited to IPs
 already in Top IPs. Aggregate matching shows a whole bucket with its full counts,
 not just matching events. The query survives refresh/period changes but not a
 restart. Live jail status and investigation retain their unfiltered context.
+
+## Background activity
+
+A text status line on every screen shows accepted background work immediately
+and clears when it completes, fails, or is cancelled. Overlapping operations keep
+the line active until all finish; a count indicates multiple active operations.
+Coverage, validation, generation, and projections retain their detailed local
+loading states. Automatic refresh uses this quiet line, without repeated popups.
+Filtering, copying, and other immediate local actions do not show busy feedback.
+Closing a lookup or analysis view clears its activity and ignores late results;
+closing GeoIP diagnostics leaves its app-lifetime update running visibly.
 
 ## Key and action map
 
@@ -99,4 +111,5 @@ selected IP disappears from history or current bans. Failures retain the last
 successful snapshot. WHOIS/RDNS are explicit on-demand network tools, never
 background enrichment. Commands run without sudo with eight-second timeouts and
 no retries; output shows command, stdout/stderr, and failure category. Displayed
-and copied output is capped at approximately 200 KiB.
+and copied output is capped at approximately 200 KiB. The output view starts with
+`Running WHOIS…` or `Resolving PTR…` and replaces that text with the bounded result.

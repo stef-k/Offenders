@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import offenders
+from offenders_activity import ActivityStatus
 import offenders_geoip_ui as ui
 import offenders_geoip_update as updater
 from offenders_geoip import CandidateHealth, DatabaseHealth
@@ -113,13 +114,17 @@ class ActionsTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     await pilot.press("u")
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
-                    duplicate = app.geoip_status.update_now()
-                    await duplicate.wait()
-                    self.assertIn("already running", app.geoip_status.feedback)
+                    self.assertIn("Updating GeoIP…", str(app.screen.query_one(ActivityStatus).content))
+                    self.assertEqual(app.geoip_status.feedback, "Updating GeoIP…")
+                    with patch.object(app, "notify") as notify:
+                        await pilot.press("u")
+                        notify.assert_called_once_with("GeoIP operation already in progress", timeout=2.0)
+                    self.assertEqual(app.geoip_status.feedback, "Updating GeoIP…")
                 finally:
                     release.set()
                 await app.workers.wait_for_complete()
                 self.assertIn("Activated 2026-09", app.geoip_status.feedback)
+                self.assertEqual(str(app.screen.query_one(ActivityStatus).content), "")
                 self.assertEqual(str(app.geoip_status.content), "")
                 # Unknown/unmapped offender rows do not create a health warning.
                 self.assertIn("Unknown", app.query_one("#offenders").get_row_at(0))
@@ -130,6 +135,7 @@ class ActionsTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(str(app.geoip_status.content), "")
                 self.assertLessEqual(len(app.geoip_status.feedback), 240)
                 self.assertNotIn("\n", app.geoip_status.feedback)
+                self.assertEqual(str(app.screen.query_one(ActivityStatus).content), "")
 
     async def test_automatic_mount_only_activation_noop_and_failure(self):
         """One mount check delegates due policy; only activation requests refresh."""
@@ -154,6 +160,7 @@ class ActionsTests(unittest.IsolatedAsyncioTestCase):
                         try:
                             self.assertTrue(await asyncio.to_thread(started.wait, 3))
                             await app._refresh_worker.wait()
+                            self.assertIn("Updating GeoIP…", str(app.screen.query_one(ActivityStatus).content))
                         finally:
                             release.set()
                         await app.workers.wait_for_complete()

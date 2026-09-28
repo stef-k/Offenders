@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Shared background activity feedback across all screens, including pending report
+  periods, GeoIP updates, and immediate lookup status; preserve last-good data and
+  explain duplicate requests while work is active.
+
 ## 0.1.0 - 2026-09-28
 
 - Terminal dashboard for Fail2Ban history and live jail status, with rolling

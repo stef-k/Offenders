@@ -102,6 +102,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
                 await app.workers.wait_for_complete()
                 self.assertEqual(rendered(app), before)
                 summary = str(app.query_one("#summary").content)
+                self.assertEqual(app.workers.activity_text, "")
                 self.assertIn("Degraded", summary)
                 self.assertIn("timeout", summary)
                 self.assertIn("Showing last successful 7d refresh 2026-09-27 12:02:00", summary)
@@ -223,6 +224,7 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     await pilot.press("p")
                     await self.wait_started(entered)
+                    self.assertIn("Loading 30d…", app.workers.activity_text)
                     self.assertEqual(rendered(app), before)
                     self.assertIn("period=7d", str(app.query_one("#summary").content))
                     await pilot.press("p")

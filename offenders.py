@@ -120,7 +120,7 @@ class OffendersApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.screen_change_signal.subscribe(self, self.workers.show_on_screen)
+        self.screen_change_signal.subscribe(self, self.workers.show_on_screen, immediate=True)
         self.title = "Fail2Ban Top Offenders"
         self.sub_title = "Updated at: —"
 

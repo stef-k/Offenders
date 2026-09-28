@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
+from textual.worker import get_current_worker
 
 from offenders_geoip import geoip, resolve_data_root
 from offenders_geoip_update import UpdateError, read_state, set_auto, update
@@ -142,6 +143,8 @@ class GeoIPStatus(Static):
 
     def _perform_update(self, *, automatic):
         """Delegate locking, due policy, download and activation to offenders_geoip_update."""
+        self.app.call_from_thread(self.app.workers.label, get_current_worker(), "Updating GeoIP…")
+        self.app.call_from_thread(self._feedback, "Updating GeoIP…")
         try:
             result = update(self.root, automatic=automatic)
             if result is None:

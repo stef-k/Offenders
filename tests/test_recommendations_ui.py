@@ -125,6 +125,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press('a')
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
                     old = app.screen
+                    self.assertIn("Analyzing coverage…", app.workers.activity_text)
                     self.assertIn('Analyzing coverage', str(old.query_one('#coverage-summary', Static).content))
                     await pilot.press('a')
                     self.assertIs(app.screen, old)

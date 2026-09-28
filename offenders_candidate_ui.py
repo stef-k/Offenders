@@ -74,7 +74,10 @@ class CustomCandidateScreen(Screen):
 
     def action_generate(self) -> None:
         """Exclude duplicate workers and clear any previously copyable output."""
-        if self._active or self._delivery_closed:
+        if self._active:
+            self.app.notify("Candidate generation already in progress", timeout=2.0)
+            return
+        if self._delivery_closed:
             return
         self._active = True
         self.result = None

@@ -58,8 +58,12 @@ class ValidationScreenTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIs(screen.targets[1], decision.disabled_candidates[1])
                     await pilot.press('v')
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
+                    self.assertIn("Validating…", app.workers.activity_text)
                     self.assertIn('Validating… second', str(screen.query_one('#validation-detail', Static).content))
-                    await pilot.press('v', 'enter')
+                    with patch.object(app, 'notify') as notify:
+                        await pilot.press('v', 'enter')
+                        self.assertEqual(notify.call_count, 2)
+                        notify.assert_called_with('Validation already in progress', timeout=2.0)
                     self.assertEqual(run.call_count, 1)
                     await pilot.press('escape')
                     release.set()
@@ -77,7 +81,10 @@ class ValidationScreenTests(unittest.IsolatedAsyncioTestCase):
                     analysis.assert_called_once()
                     await pilot.press('q')
                     run.side_effect = RuntimeError('fixture failure')
-                    await pilot.press('v', 'enter')
+                    with patch.object(app, 'notify') as notify:
+                        await pilot.press('v', 'enter')
+                        self.assertEqual(notify.call_count, 2)
+                        notify.assert_called_with('Validation already in progress', timeout=2.0)
                     await app.workers.wait_for_complete()
                     self.assertIn('Validation unavailable', str(app.screen.query_one('#validation-detail', Static).content))
                 finally:
