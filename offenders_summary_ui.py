@@ -41,7 +41,7 @@ class DashboardSummary(Static):
             self._project(report)
         self._render_table()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Loading summary…")
     def _project(self, report: Report) -> None:
         """Acquire local enrichment away from the UI loop; report failures safely."""
         worker = get_current_worker()

@@ -74,7 +74,10 @@ class CustomCandidateScreen(Screen):
 
     def action_generate(self) -> None:
         """Exclude duplicate workers and clear any previously copyable output."""
-        if self._active or self._delivery_closed:
+        if self._active:
+            self.app.notify("Candidate generation already in progress", timeout=2.0)
+            return
+        if self._delivery_closed:
             return
         self._active = True
         self.result = None
@@ -82,7 +85,7 @@ class CustomCandidateScreen(Screen):
         self.query_one("#candidate-detail", Static).update(Text("Generating and validating candidate…"))
         self._generate()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Generating and validating candidate…")
     def _generate(self) -> None:
         """Backend retains responsibility for bounded command completion and cleanup."""
         worker, app = get_current_worker(), self.app

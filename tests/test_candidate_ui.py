@@ -50,13 +50,16 @@ class CandidateScreenTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press('v')
                     screen = app.screen
                     self.assertIsInstance(screen, ui.CustomCandidateScreen)
-                    self.assertIn(ui.INITIAL, str(screen.query_one(Static).content))
+                    self.assertIn(ui.INITIAL, str(screen.query_one("#candidate-detail", Static).content))
                     run.assert_not_called()
                     with patch.object(app, 'copy_to_clipboard') as copy:
                         await pilot.press('c', 'v')
                         self.assertTrue(await asyncio.to_thread(entered.wait, 3))
-                        self.assertIn('Generating and validating', str(screen.query_one(Static).content))
-                        await pilot.press('v', 'c')
+                        self.assertIn("Generating and validating candidate…", app.workers.activity_text)
+                        self.assertIn('Generating and validating', str(screen.query_one("#candidate-detail", Static).content))
+                        with patch.object(app, 'notify') as notify:
+                            await pilot.press('v', 'c')
+                            notify.assert_called_once_with('Candidate generation already in progress', timeout=2.0)
                         self.assertEqual(run.call_count, 1)
                         copy.assert_not_called()
                         await pilot.press('escape')
@@ -68,7 +71,7 @@ class CandidateScreenTests(unittest.IsolatedAsyncioTestCase):
                         await app.workers.wait_for_complete()
                         self.assertIsNone(screen.result)
                         self.assertIs(app.screen.result, result)
-                        detail = str(app.screen.query_one(Static).content)
+                        detail = str(app.screen.query_one("#candidate-detail", Static).content)
                         for value in ('Candidate for operator review', ui.CAVEATS, '[Definition]', result.filter_sha256):
                             self.assertIn(value, detail)
                         await pilot.press('c')
@@ -85,7 +88,7 @@ class CandidateScreenTests(unittest.IsolatedAsyncioTestCase):
                         await app.workers.wait_for_complete()
                         await pilot.press('c')
                         copy.assert_not_called()
-                        detail = str(app.screen.query_one(Static).content)
+                        detail = str(app.screen.query_one("#candidate-detail", Static).content)
                         self.assertIn('Custom candidate withheld', detail)
                         self.assertIn('retained limit', detail)
                         self.assertNotIn('[Definition]', detail)

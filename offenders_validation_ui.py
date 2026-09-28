@@ -93,14 +93,17 @@ class ValidationScreen(Screen):
 
     def action_validate(self) -> None:
         """Reject repeated requests while the current bounded operation is active."""
-        if self._active or self._delivery_closed or not self.targets:
+        if self._active:
+            self.app.notify("Validation already in progress", timeout=2.0)
+            return
+        if self._delivery_closed or not self.targets:
             return
         target = self.targets[self.query_one(DataTable).cursor_row]
         self._active = True
         self.query_one("#validation-detail", Static).update(Text(f"Validating… {target.name} / {target.filter_stem}"))
         self._validate(target)
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Validating…")
     def _validate(self, target) -> None:
         """Let backend cleanup finish even when this worker's delivery is cancelled."""
         worker, app = get_current_worker(), self.app

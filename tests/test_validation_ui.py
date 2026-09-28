@@ -58,8 +58,12 @@ class ValidationScreenTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIs(screen.targets[1], decision.disabled_candidates[1])
                     await pilot.press('v')
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
+                    self.assertIn("Validating…", app.workers.activity_text)
                     self.assertIn('Validating… second', str(screen.query_one('#validation-detail', Static).content))
-                    await pilot.press('v', 'enter')
+                    with patch.object(app, 'notify') as notify:
+                        await pilot.press('v', 'enter')
+                        self.assertEqual(notify.call_count, 2)
+                        notify.assert_called_with('Validation already in progress', timeout=2.0)
                     self.assertEqual(run.call_count, 1)
                     await pilot.press('escape')
                     release.set()

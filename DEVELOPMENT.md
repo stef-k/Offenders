@@ -60,6 +60,57 @@ event loop. Screens reject stale deliveries after replacement or closure.
 Navigation callbacks keep jail and IP screens independent of app imports.
 See [usage](docs/usage.md) for operator controls.
 
+## Background activity convention
+
+`offenders_activity.ActivityWorkers` is the application's single Textual worker
+manager. Every `@textual.work` and `node.run_worker` operation automatically
+participates, including thread and coroutine workers on widgets, screens, and
+the App. Use these APIs for slow work; do not bypass them with raw threads,
+executors, or detached asyncio tasks. Timer callbacks schedule through the same
+APIs. Immediate local event handlers do not register activity.
+
+A worker may use `name="activity:Human label…"`, or the UI thread may call
+`app.workers.label(worker, "Human label…")` for a dynamic target. Unlabelled work
+shows `Working…`; argument-bearing worker descriptions are never displayed.
+Worker identities preserve overlapping operations. No manual start/stop pairing
+is required. Screen-local detailed feedback remains with its existing owner.
+The base app installs a one-line presenter on every screen, including modals.
+Lookup wording remains in the lookup UI, so backend changes can update both the
+local and shared label together.
+
+Textual 8 worker state messages do not bubble and cancellation before execution
+may omit a terminal message. The small compatibility seam installs `App._workers`
+and overrides `WorkerManager._remove_worker` for task-done cleanup. Registration
+updates presentation synchronously before execution; completion removes only its
+own activity, including error and pre-start cancellation. Deferred workers become
+active through `start_all`. Keep lifecycle tests green on Textual upgrades.
+Dismissed screen workers are cancelled by Textual; existing cancellation and
+stale-result guards still protect delivery. Cancellation clears UI activity but
+does not forcibly terminate bounded backend threads or replace backend locks.
+GeoIP's app-lifetime owner continues updating after diagnostics closes.
+
+The current asynchronous audit covers all ten worker paths:
+
+| Trigger | Worker / feedback |
+| --- | --- |
+| Initial report, timer, refresh, period, GeoIP activation | `_collect_report`: refreshing or pending period |
+| GeoIP mount / opted-in startup update | `_startup`: checking, then updating |
+| GeoIP Update now | `update_now`: updating |
+| GeoIP automatic-policy toggle | `toggle_auto`: saving policy |
+| Explicit WHOIS / RDNS | `CommandOutputModal._run`: provider-specific working text |
+| IP mount / successful new report | `IPInspectorScreen._project`: loading details |
+| Coverage mount | `_analyze`: analyzing coverage |
+| Selected filter validation | `_validate`: validating |
+| Custom template action | `_generate`: generating and validating |
+| ASN/Country selection / successful new report | `DashboardSummary._project`: loading summary |
+
+Filtering, copy, cursor movement, jail-history expansion, back navigation, and
+ordinary snapshot rendering remain immediate/local. Mount/navigation that starts
+one of the workers above inherits activity automatically. Duplicate report,
+GeoIP, validation, and candidate actions retain their single-flight rejection
+feedback. `tests/test_activity.py` audits runtime scheduling for unmanaged work
+and proves generic participation; existing product tests cover detailed states.
+
 ## GeoIP lifecycle
 
 | Responsibility | Module |
