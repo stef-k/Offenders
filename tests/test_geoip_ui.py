@@ -123,6 +123,9 @@ class ActionsTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     release.set()
                 await app.workers.wait_for_complete()
+                # Activation schedules a normal report refresh after this wait snapshots
+                # the current workers; wait once more for that causally spawned worker.
+                await app.workers.wait_for_complete()
                 self.assertIn("Activated 2026-09", app.geoip_status.feedback)
                 self.assertEqual(str(app.screen.query_one(ActivityStatus).content), "")
                 self.assertEqual(str(app.geoip_status.content), "")
