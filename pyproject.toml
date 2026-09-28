@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "offenders"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Fail2Ban log and jail dashboard for the terminal"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -25,6 +25,7 @@ dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4", "dnspython>=2.8,<3", "
 Source = "https://github.com/stef-k/Offenders"
 Issues = "https://github.com/stef-k/Offenders/issues"
 PyPI = "https://pypi.org/project/offenders/"
+Documentation = "https://stef-k.github.io/Offenders/"
 
 [project.scripts]
 offenders = "offenders:main"

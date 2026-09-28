@@ -16,12 +16,14 @@ def normalized(name):
 
 
 def check_metadata(raw, project, root):
-    """Require the built identity, dependencies, license, and long description."""
+    """Require the built identity, project URLs, dependencies, license, and description."""
     from packaging.requirements import Requirement
 
     metadata = BytesParser().parsebytes(raw)
     assert normalized(metadata["Name"]) == normalized(project["name"])
     assert metadata["Version"] == project["version"]
+    expected_urls = sorted(f"{label}, {url}" for label, url in project["urls"].items())
+    assert sorted(metadata.get_all("Project-URL", [])) == expected_urls, "Project-URL mismatch"
     assert metadata["Requires-Python"] == project["requires-python"]
     assert {Requirement(value) for value in metadata.get_all("Requires-Dist", [])} == {
         Requirement(value) for value in project["dependencies"]

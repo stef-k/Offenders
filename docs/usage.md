@@ -40,7 +40,7 @@ restart. Live jail status and investigation retain their unfiltered context.
 
 ## Background activity
 
-The one-row footer on every screen, including detail and command-output modals,
+The one-row footer on every Offenders product screen, including detail and command-output modals,
 combines contextual key bindings with a right-aligned `⏳ Refreshing…` activity
 indicator. It appears immediately and remains visible for at least about 500 ms,
 even if work has already finished. Only the visual clear is deferred: results,
@@ -49,6 +49,7 @@ Overlapping work shows a primary label and `(+N)` additional workers without
 flickering. Long-running work stays visible until it finishes. On narrow terminals
 the label is ellipsized to at most 45% of the row; native footer bindings retain
 their scrolling and click behavior. Activity never adds a row or moves content.
+Framework screens such as the command palette retain their native layout.
 
 Coverage, validation, generation, and projections retain their detailed local
 loading states. Automatic refresh uses this quiet indicator without repeated

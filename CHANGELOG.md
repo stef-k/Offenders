@@ -4,12 +4,17 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+## 0.2.1 - 2026-09-28
+
 - Move shared background activity into a universal one-row footer with native
   key bindings, a compact hourglass and overlap count, and bounded narrow-terminal
   labels. Keep fast activity visible for about 500 ms without delaying results;
   include command-output modals and remove the separate top status row (#93).
   Product screens compose the footer explicitly; framework screens such as the
   command palette retain their native layout.
+
+- Ship canonical PyPI and Documentation project URLs in distribution metadata for
+  the first time, with refreshed README badges and documentation links.
 
 ## 0.2.0 - 2026-09-28
 
