@@ -218,7 +218,8 @@ Fail2Ban changes remain outside Offenders.
 `[project].version` is the sole distribution version source. The
 distribution name and console command are both `offenders`, with the command
 calling `offenders:main`. Python must be at least 3.12; runtime bounds are
-`textual>=8.2.8,<9` and `maxminddb>=3.1,<4`.
+`textual>=8.2.8,<9`, `maxminddb>=3.1,<4`, `dnspython>=2.8,<3`, and
+`ipwhois>=1.3,<2`.
 
 The explicit setuptools `py-modules` list packages the concrete runtime modules
 together. Source execution also requires those modules, not a standalone script.
