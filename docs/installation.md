@@ -47,10 +47,10 @@ Owner enrichment is optional; it does not require broad sudo permission. If an
 administrator chooses to allow it, limit permission to the exact `ss` invocation
 above and verify that executable's path separately.
 
-WHOIS requires optional `whois`. RDNS uses optional `dig +short -x` and falls back
-to `getent hosts` **only when dig is missing**, never after a timeout or nonzero
-exit. On Ubuntu these optional tools can be installed with
-`sudo apt-get install whois dnsutils`. They are not needed for the dashboard.
+Registration (RDAP) and RDNS (PTR) use required Python dependencies supplied by
+pipx: classic `ipwhois` and `dnspython`. No separate lookup executables are needed.
+RDNS uses the host DNS resolver configuration; Registration needs outbound RDAP
+HTTP access. Network failures appear per request and do not disable the actions.
 
 ## Install and upgrade
 

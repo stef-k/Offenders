@@ -67,7 +67,7 @@ contexts rather than promising every app binding on every modal.
 | Dashboard tables; jail/IP detail tables | `t` | Toggle focused table row/cell cursor mode |
 | Dashboard real Top IP or Last bans row | Enter | Open IP inspector |
 | Dashboard Active bans per jail row | Enter | Open jail detail |
-| Dashboard real Top IP or Last bans row; IP inspector | `w` / `d` | Explicit WHOIS / RDNS for the selected/fixed IP |
+| Dashboard real Top IP or Last bans row; IP inspector | `w` / `d` | Explicit Registration / RDNS for the selected/fixed IP |
 | GeoIP diagnostics | `u` / `a` | Update now / persist automatic-policy toggle |
 | GeoIP diagnostics | Esc / `q` | Close |
 | Jail detail | `e` | Expand history 10 → 50 → 100 → all in period; stays at all |
@@ -83,7 +83,7 @@ contexts rather than promising every app binding on every modal.
 | Coverage; validation; custom candidate | Esc / `q` | Close |
 
 Aggregate rows support row/cell copying but do not represent one IP: no IP
-inspector or WHOIS/RDNS is available from them. Last bans remains IP-navigable.
+inspector or Registration/RDNS is available from them. Last bans remains IP-navigable.
 Copy actions use terminal clipboard support, with stdout fallback on a reported
 clipboard exception. Command-output `c` copies output, not a table selection.
 
@@ -108,8 +108,27 @@ Returning to the dashboard reselects the IP when present.
 
 Successful refresh/period changes update open jail/IP views in place, even if the
 selected IP disappears from history or current bans. Failures retain the last
-successful snapshot. WHOIS/RDNS are explicit on-demand network tools, never
-background enrichment. Commands run without sudo with eight-second timeouts and
-no retries; output shows command, stdout/stderr, and failure category. Displayed
-and copied output is capped at approximately 200 KiB. The output view starts with
-`Running WHOIS…` or `Resolving PTR…` and replaces that text with the bounded result.
+successful snapshot. Registration/RDNS are explicit on-demand network lookups,
+never background enrichment. Press `w` for Registration (RDAP) or `d` for RDNS
+(PTR) on the dashboard's selected IP or the inspector's fixed IP.
+
+The output view immediately shows `Querying RDAP…` or `Resolving PTR…`, also shown
+in shared activity feedback. `Esc`/`q` closes it and rejects late output. `c` copies
+exactly the displayed result, including any truncation marker. Results include the
+normalized IP, backend, and outcome; untrusted fields display literally with
+controls flattened. Output is capped at 8,192 characters.
+
+RDNS uses the host-configured DNS resolver with an eight-second total lifetime.
+It lists sorted, deduplicated PTR names without forward confirmation or a fallback
+provider. Outcomes are `success`, `no-result` (NXDOMAIN/no PTR answer), `timeout`,
+`resolver-unavailable`, or `dns-failure`.
+
+Registration uses classic `ipwhois` for shallow RDAP with an eight-second transport
+timeout, zero retries, and no ASN discovery, NIR requests, or entity follow-ups.
+The transport timeout is not a total wall-clock deadline across HTTP redirects.
+Only available network fields such as CIDR, name, handle, country, type, status,
+and address range appear; contacts and raw responses are omitted. Non-global IPs
+return `not-global` without network traffic. Other outcomes are `success`,
+`rate-limited`, `invalid-response`, `rdap-unavailable`, or `unexpected-failure`.
+The library reports transport timeouts and other network failures together as
+`rdap-unavailable`. Neither registration nor PTR data is a reputation assessment.

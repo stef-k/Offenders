@@ -2,7 +2,7 @@
 
 Offenders is a Linux terminal dashboard for Fail2Ban history and live jail status.
 Inspect banned IPs, ASN/Country summaries, jail settings and current membership;
-run on-demand WHOIS/RDNS lookups or a manual Coverage analysis for review.
+run on-demand Registration/RDNS lookups or a manual Coverage analysis for review.
 
 ![Offenders TUI screenshot](https://raw.githubusercontent.com/stef-k/Offenders/master/offenders-screenshot.jpg)
 
