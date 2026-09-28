@@ -26,9 +26,9 @@ enable a jail. No recommendation is a normal result; suppression and evidence
 summaries explain limitations. Analysis unavailable instead indicates failure.
 
 Existing-filter validation requires explicit target selection and execution;
-opening/highlighting alone does not validate. It uses bounded retained target and
-same-source context samples with installed `fail2ban-regex`, without sudo or DNS
-lookups. It does not reacquire logs or change configuration. Counts describe tested
+opening/highlighting alone does not validate. It tests samples from the analysis
+snapshot with installed `fail2ban-regex`, without sudo or DNS lookups. It does not
+read fresh logs or change configuration. Counts describe tested
 lines, which may differ from logical records. Success means the tested sample
 matched, **never that a filter is safe**. Context is not a known-clean corpus:
 context matches need review and zero matches do not prove low false-positive risk.

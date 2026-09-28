@@ -22,9 +22,9 @@ outside the Top IP ranking. Aggregate rows show ban and distinct-IP counts with
 separate mapped, Unmapped, and Unavailable buckets. Their totals can exceed the
 visible Top IP total. Last bans displays the newest ten events.
 
-Startup, the 30-second timer, manual refresh, period changes, and post-update
-refresh share **one active report build**. Requests during a build do not cancel
-or queue work; manual refresh/period requests report that refresh is in progress.
+Reports refresh at startup, every 30 seconds, and on request. Only one refresh
+runs at a time; a manual refresh or period request while busy reports that refresh
+is in progress and must be retried afterward.
 A period change commits only on success. Failure retains last-known-good tables,
 period, and timestamp with a degraded message; before the first success, data is
 explicitly unavailable. A successful recovery replaces the data and clears the
@@ -46,7 +46,7 @@ contexts rather than promising every app binding on every modal.
 | Context | Key/action | Result |
 | --- | --- | --- |
 | Dashboard | `q` | Quit |
-| Dashboard; jail/IP detail | `r` / `p` | Refresh / request next period, sharing the single-build gate |
+| Dashboard; jail/IP detail | `r` / `p` | Refresh / request next period (when no refresh is running) |
 | Dashboard | `f` | Focus filter; Enter keeps query and returns to table; Esc clears and returns |
 | Dashboard | `v` | Cycle IP / ASN / Country summary |
 | Dashboard | `a` | Open one Coverage analysis snapshot |

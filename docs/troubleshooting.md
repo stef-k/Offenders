@@ -21,14 +21,3 @@ title: Troubleshooting
 
 There is no generic user configuration file. Periods are fixed runtime choices;
 GeoIP data and automatic policy are user-owned XDG state.
-
-For deliberately maintained **source builds**, advanced constants are:
-
-- `TOP_COUNT` and `IGNORE_PRIVATE` in [offenders_report.py](https://github.com/stef-k/Offenders/blob/master/offenders_report.py):
-  Top IP ranking size and exclusion of private/loopback/link-local addresses.
-- `LOG_CURRENT`, `LOG_ROTATED`, and `LOG_GZ_GLOB` in that file: report log paths.
-- `CHECK_INTERVAL_SECONDS` in [offenders.py](https://github.com/stef-k/Offenders/blob/master/offenders.py): report refresh interval.
-
-These are source edits, not settings exposed to normal pipx users. Editable
-installation keeps source changes effective; package upgrades replace installed
-code. Do not confuse ranking exclusions with full-period aggregate/history counts.
