@@ -129,7 +129,6 @@ class OffendersApp(App):
         bans_per_jail.cursor_type = "row"
 
         last_bans = self.query_one("#last-bans", DataTable)
-        # Removed raw line column; keep it clean
         last_bans.add_columns("Date", "Time", "Jail", "IP")
         last_bans.cursor_type = "row"
 

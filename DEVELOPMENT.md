@@ -1,8 +1,7 @@
 # Development and architecture
 
 This is the maintainer reference for the current codebase. User workflows belong
-in the [operator documentation](docs/README.md); artifact qualification and
-publication belong in [RELEASING.md](RELEASING.md).
+in the [operator documentation](docs/README.md).
 
 ## Development setup
 
@@ -156,7 +155,7 @@ Fail2Ban changes remain outside Offenders.
 ## Packaging and distribution
 
 `pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static
-`[project].version` is the sole distribution version source. The intended
+`[project].version` is the sole distribution version source. The
 distribution name and console command are both `offenders`, with the command
 calling `offenders:main`. Python must be at least 3.12; runtime bounds are
 `textual>=8.2.8,<9` and `maxminddb>=3.1,<4`.
@@ -166,10 +165,33 @@ together. Source execution also requires those modules, not a standalone script.
 `scripts/check_distribution.py` checks the wheel and sdist against that contract.
 Pipx provides operator isolation and is not a runtime dependency.
 
-Publication is isolated to `.github/workflows/release.yml`; there is no ordinary
-PR CI workflow. Exact build, version/tag, installed-artifact, identity and Trusted
-Publishing gates live in [RELEASING.md](RELEASING.md). Local checks do not establish
-PyPI registration, an OIDC exchange, or successful publication.
+Build and check distributions from a clean checkout with an empty `dist/`:
+
+```bash
+python -m pip install build twine
+python -m build
+python -m twine check --strict dist/*
+python scripts/check_distribution.py
+```
+
+The checker requires exactly one wheel and sdist, validates metadata and the
+README long description, and rejects files outside the artifact allowlist.
+Run it without Python's `-O` flag. The changelog is repository documentation;
+it is not part of the runtime wheel.
+
+### Release maintenance
+
+Accumulate meaningful changes under `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
+Before a release, update the version in `pyproject.toml`, move those entries to
+`X.Y.Z - YYYY-MM-DD`, and leave a fresh `Unreleased` section. Run the ordinary
+suite and the build/distribution checks above, then tag `v<version>` and publish
+a GitHub Release using that changelog section as the basis for its notes.
+Approve the protected `pypi` deployment if required and verify the release on PyPI.
+
+[The release workflow](.github/workflows/release.yml) owns publication and the
+installed-wheel smoke check. It uses PyPI Trusted Publishing with the `pypi`
+environment; no long-lived upload token is needed. There is no ordinary PR CI
+workflow.
 
 ## Tests and evidence
 
@@ -190,10 +212,21 @@ regression test for a real defect rather than a new general harness.
 The ordinary suite needs no root, network, or live daemon. Optional tests using a
 locally installed `fail2ban-regex` skip when the executable is absent; they exercise
 synthetic samples without a daemon or host configuration mutation.
-[Fixture provenance](tests/fixtures/README.md) separates captured M6 Fail2Ban 1.0.2
-status, synthetic compatible status examples, and upstream-adapted log records.
-Neither synthetic 1.1.x-compatible output nor local runtime smoke proves a live
-1.1.x daemon or a production deployment.
+See [fixture provenance](tests/fixtures/README.md) for captured status output,
+synthetic examples, upstream sources, and the limits of those fixtures.
+
+## Source configuration
+
+For deliberately maintained source builds, advanced constants are:
+
+- `TOP_COUNT` and `IGNORE_PRIVATE` in [offenders_report.py](https://github.com/stef-k/Offenders/blob/master/offenders_report.py):
+  Top IP ranking size and exclusion of private/loopback/link-local addresses.
+- `LOG_CURRENT`, `LOG_ROTATED`, and `LOG_GZ_GLOB` in that file: report log paths.
+- `CHECK_INTERVAL_SECONDS` in [offenders.py](https://github.com/stef-k/Offenders/blob/master/offenders.py): report refresh interval.
+
+These are source edits, not settings exposed to normal pipx users. Editable
+installation keeps source changes effective; package upgrades replace installed
+code. Do not confuse ranking exclusions with full-period aggregate/history counts.
 
 ## Code Guard policy
 
@@ -212,21 +245,3 @@ code-guard . --changed-only --json --json-mode compact
 Cover the complete change against its base before completion (for example, use
 the tool's `--base-ref` selector for committed work). Inspect findings and required
 policies; do not add exemptions or alter thresholds merely to pass.
-
-## Live-host qualification boundary
-
-Keep three evidence classes separate: ordinary offline development/tests, clean
-install/release-artifact qualification, and live production-host qualification.
-A fixture captured on production proves only the captured command/format, not
-execution of the current application revision there.
-
-The recorded read-only M6 inspection on 2026-09-27 established Fail2Ban 1.0.2
-status compatibility. The migrated M6 still runs the December 2025 standalone
-application; the reviewed packaged application has not been production-deployed.
-This is the current recorded deployment boundary, not a fresh host inspection.
-
-Production inspection is read-only by default. No development/test command should
-modify Fail2Ban. An explicit reviewed app-owned GeoIP update may be exercised only
-when intentionally qualifying that operator action. Production deployment and
-legacy-command cutover remain a separate final gate; offline tests and successful
-artifact builds cannot substitute for it.

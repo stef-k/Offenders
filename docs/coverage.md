@@ -26,9 +26,9 @@ enable a jail. No recommendation is a normal result; suppression and evidence
 summaries explain limitations. Analysis unavailable instead indicates failure.
 
 Existing-filter validation requires explicit target selection and execution;
-opening/highlighting alone does not validate. It uses bounded retained target and
-same-source context samples with installed `fail2ban-regex`, without sudo or DNS
-lookups. It does not reacquire logs or change configuration. Counts describe tested
+opening/highlighting alone does not validate. It tests samples from the analysis
+snapshot with installed `fail2ban-regex`, without sudo or DNS lookups. It does not
+read fresh logs or change configuration. Counts describe tested
 lines, which may differ from logical records. Success means the tested sample
 matched, **never that a filter is safe**. Context is not a known-clean corpus:
 context matches need review and zero matches do not prove low false-positive risk.
@@ -41,6 +41,6 @@ filter text validates with all tested target lines matched and none missed/ignor
 Partial results retain their limitations. Withheld results cannot be copied.
 
 Candidates start `enabled = false`, inherit local ban policy for operator review,
-and are copy-only. Wiring has not been activated or daemon-tested. Offenders never
-writes suggested configuration files, installs/enables/reloads jails, or bans or
-unbans an IP. Review evidence and local policy independently before any manual use.
+and are copy-only. Offenders does not daemon-test generated candidates, write
+suggested configuration files, install/enable/reload jails, or ban or unban an IP.
+Review evidence and local policy independently before any manual use.

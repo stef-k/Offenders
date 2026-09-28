@@ -7,8 +7,7 @@ title: Installation and permissions
 ## Requirements and permissions
 
 The supported baseline is **Ubuntu 24.04 LTS / Python 3.12+**, with separately
-installed **Fail2Ban >=1.0.2**. Python dependencies are
-`textual>=8.2.8,<9` and `maxminddb>=3.1,<4`; package installation supplies these.
+installed **Fail2Ban >=1.0.2**. pipx installs Python dependencies automatically.
 
 The dashboard needs Fail2Ban file logs and permission to read them. Defaults are
 `/var/log/fail2ban.log`, its `.1` rotation, and `.N.gz` rotations. Journal-only
@@ -55,13 +54,7 @@ exit. On Ubuntu these optional tools can be installed with
 
 ## Install and upgrade
 
-**The first PyPI publication is pending.** The intended distribution name is
-`offenders`; registration acceptance and OIDC publication are not yet proven.
-The following index commands become usable after publication. Until then use
-the secondary source workflow or a locally built wheel described in
-[release preparation](https://github.com/stef-k/Offenders/blob/master/RELEASING.md).
-
-After publication, pipx/PyPI is the primary Linux application path:
+Install from [PyPI](https://pypi.org/project/offenders/) using pipx:
 
 ```bash
 sudo apt-get update
@@ -93,8 +86,7 @@ Check the executable location reported by pipx; deliberately select it through
 PATH or its full path when ready to verify `offenders geoip status` and launch.
 Keep the same user/XDG environment to retain GeoIP data and policy. Rollback
 means restoring the old command resolution and environment; retain the old
-installation until the replacement is verified. These are migration guidelines,
-not evidence of a production cutover or an instruction to perform one now.
+installation until the replacement is verified.
 
 ### Source and advanced installs
 
@@ -111,5 +103,5 @@ offenders
 `pipx install .` provides local application isolation. With the source environment
 active, `python offenders.py` or `./offenders.py` also launches the dashboard.
 Keep the packaged modules together: copying only the old single script is not a
-current installation method. See [development tests](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md#tests-and-evidence) for
-contributor guidance and [release preparation](https://github.com/stef-k/Offenders/blob/master/RELEASING.md) for local wheel checks.
+current installation method. See [development](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md)
+for contributor setup and artifact checks.

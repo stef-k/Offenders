@@ -55,10 +55,9 @@ outcome. Files older than **62 local days** produce a stale warning, not invalid
 readable data remains usable. Healthy fallback and healthy-but-unmapped addresses
 do not cause the global unavailable/stale warning.
 
-No root cron job, `mmdblookup`, `geoip2`, network GeoIP lookup API, or bundled monthly
-dataset is needed. If migrating an old updater, retire its root cron invocation;
-old system-target/updater flags are no longer supported. The compatibility wrapper
-`update_geoip_db.py` is rootless and is not the normal installed command.
+If migrating from a system-wide GeoIP updater, retire its root cron invocation
+when switching to Offenders-managed updates. Updates use the invoking user's
+data directory; use `offenders geoip update` as that user.
 
 DB-IP Lite is licensed under **Creative Commons Attribution 4.0**. Retain
 [IP Geolocation by DB-IP](https://db-ip.com) attribution when using or redistributing

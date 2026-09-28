@@ -21,25 +21,13 @@ root; validation also uses temporary local sample files.
 ## Quick start
 
 Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban >=1.0.2**.
-The package supplies `textual>=8.2.8,<9` and `maxminddb>=3.1,<4`.
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
 be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 
-**First PyPI publication is pending.** The intended distribution name is
-`offenders`; registration and Trusted Publishing acceptance remain unproven.
-After publication, the primary Linux install/run path is:
+Install from [PyPI](https://pypi.org/project/offenders/) and run:
 
 ```bash
 pipx install offenders
-offenders
-```
-
-Until then, from a repository checkout with Python's venv support installed:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
 offenders
 ```
 
@@ -51,17 +39,9 @@ match never establishes filter safety. See [Coverage](https://stef-k.github.io/O
 
 ## Documentation
 
-The repository documentation is available now on the
-[Pages documentation site](https://stef-k.github.io/Offenders/).
-
-- [Documentation home](https://stef-k.github.io/Offenders/)
-- [Installation, upgrades, permissions, and migration](https://stef-k.github.io/Offenders/installation.html)
-- [Usage and authoritative controls](https://stef-k.github.io/Offenders/usage.html)
-- [GeoIP and ASN enrichment](https://stef-k.github.io/Offenders/geoip.html)
-- [Coverage and validation](https://stef-k.github.io/Offenders/coverage.html)
-- [Troubleshooting and source configuration](https://stef-k.github.io/Offenders/troubleshooting.html)
-
-[Repository](https://github.com/stef-k/Offenders) ·
+[Operator documentation](https://stef-k.github.io/Offenders/) ·
+[PyPI](https://pypi.org/project/offenders/) ·
 [Releases](https://github.com/stef-k/Offenders/releases) ·
-[Developer appendix](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md) · [Release preparation](https://github.com/stef-k/Offenders/blob/master/RELEASING.md) ·
+[Changelog](https://github.com/stef-k/Offenders/blob/master/CHANGELOG.md) ·
+[Development](https://github.com/stef-k/Offenders/blob/master/DEVELOPMENT.md) ·
 [MIT license](https://github.com/stef-k/Offenders/blob/master/LICENSE)
