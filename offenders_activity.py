@@ -1,7 +1,6 @@
 """Application-wide activity presentation over Textual's shared worker lifetime."""
 from time import monotonic
 
-from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Static
 from textual.worker_manager import WorkerManager
@@ -121,16 +120,3 @@ class ActivityWorkers(WorkerManager):
         for screen in self._app.screen_stack:
             for status in screen.query(ActivityStatus):
                 status.update(self._presented_text)
-
-    def show_on_screen(self, screen: Screen):
-        """Install the same app-owned presentation on each newly pushed screen."""
-        # The signal may precede composition; defer fallback installation so it
-        # cannot duplicate a footer already declared by the screen.
-        screen.call_after_refresh(self._ensure_footer, screen)
-        self.refresh_activity()
-
-    def _ensure_footer(self, screen: Screen):
-        """Supply a fallback only after the screen has composed its own widgets."""
-        if screen in self._app.screen_stack and not screen.query(OffendersFooter):
-            screen.mount(OffendersFooter())
-        self.refresh_activity()

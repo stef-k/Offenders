@@ -7,7 +7,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from textual.screen import Screen
+from textual.command import CommandPalette
 from textual.worker import WorkerFailed
 
 from offenders import OffendersApp
@@ -76,7 +76,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await app.workers.wait_for_complete()
             release = asyncio.Event()
-            await app.push_screen(Screen())
+            await app.push_screen(JailDetailScreen("sshd", report(), lambda ip: None))
             await pilot.pause()
             first = app.screen.run_worker(release.wait)
             second = app.run_worker(release.wait)
@@ -105,6 +105,29 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
             await deferred.wait()
             await pilot.pause()
             self.assertEqual(self.visible(app), "")
+
+    async def test_command_palette_does_not_gain_product_footer(self):
+        """Framework screens retain their own layout while product work runs."""
+        app = OffendersApp()
+        async with app.run_test() as pilot:
+            await app.workers.wait_for_complete()
+            dashboard = app.screen
+            release = asyncio.Event()
+            worker = app.run_worker(release.wait, name="activity:Refreshing…")
+            try:
+                await pilot.press("ctrl+p")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, CommandPalette)
+                self.assertEqual(len(app.screen.query(OffendersFooter)), 0)
+                self.assertEqual(len(app.screen.query(ActivityStatus)), 0)
+                self.assertEqual(str(dashboard.query_one(ActivityStatus).content),
+                                 "⏳ Refreshing…")
+                await pilot.press("escape")
+                self.assertIs(app.screen, dashboard)
+                self.assertEqual(self.visible(app), "⏳ Refreshing…")
+            finally:
+                release.set()
+                await worker.wait()
 
     async def test_lookup_pending_output_completion_and_dismissal(self):
         """Provider wording is visible before output; dismissal rejects late output."""
