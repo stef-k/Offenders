@@ -13,6 +13,7 @@ from textual.widgets import DataTable, RichLog, Static
 from textual.worker import get_current_worker
 
 from offenders_activity import OffendersFooter
+from offenders_help_content import HELP_BINDING
 from offenders_lookup import lookup_output
 from offenders_ip import IPProjection, project_ip
 from offenders_report import Report
@@ -20,7 +21,7 @@ from offenders_report import Report
 class CommandOutputModal(ModalScreen[None]):
     """Run an explicit lookup off-loop and retain literal, copyable output."""
 
-    BINDINGS = [("escape", "dismiss", "Close"), ("q", "dismiss", "Close"),
+    BINDINGS = [HELP_BINDING, ("escape", "dismiss", "Close"), ("q", "dismiss", "Close"),
                 ("c", "copy_output", "Copy output")]
 
     def __init__(self, ip: str, tool: str) -> None:
