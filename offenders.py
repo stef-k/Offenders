@@ -16,6 +16,7 @@ from rich.text import Text
 from textual.widgets import DataTable, Header, Input, Static
 
 from offenders_activity import ActivityWorkers, OffendersFooter
+from offenders_export_ui import ExportScreen
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
 from offenders_recommendations_ui import RecommendationsScreen
@@ -76,6 +77,7 @@ class OffendersApp(App):
         ("f", "filter", "Filter"),
         ("v", "view", "View"),
         ("a", "coverage", "Coverage"),
+        ("e", "export", "Export"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
@@ -190,6 +192,15 @@ class OffendersApp(App):
         if jail in table.rows:
             table.move_cursor(row=table.get_row_index(jail))
         table.focus()
+
+    def action_export(self) -> None:
+        """Open the committed report only from the dashboard, without acquisition."""
+        if self.screen is not self.default_screen:
+            return
+        if self._last_report is None:
+            self.notify("No successful report to export", timeout=2.0)
+            return
+        self.push_screen(ExportScreen(self._last_report, self.query_one("#filter", Input).value))
 
     def action_coverage(self) -> None:
         """Open one manual analysis only from the active dashboard."""
@@ -561,13 +572,16 @@ class OffendersApp(App):
 
 
 def main(argv=None):
-    """Keep the default dashboard launch and dispatch explicit GeoIP commands."""
+    """Keep the dashboard default and dispatch explicit headless commands."""
     args = sys.argv[1:] if argv is None else argv
     if args:
+        if args[0] == "export":
+            from offenders_export_cli import main as export_main
+            return export_main(args[1:])
         from offenders_geoip_cli import main as geoip_main
         if args[0] == "geoip":
             return geoip_main(args[1:])
-        print("Usage: offenders [geoip {status,update,auto on|off}]", file=sys.stderr)
+        print("Usage: offenders [export [--period PERIOD] [--output-dir DIR] | geoip {status,update,auto on|off}]", file=sys.stderr)
         return 2
     OffendersApp().run()
     return 0
