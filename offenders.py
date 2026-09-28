@@ -16,6 +16,8 @@ from rich.text import Text
 from textual.widgets import DataTable, Header, Input, Static
 
 from offenders_activity import ActivityWorkers, OffendersFooter
+from offenders_help import HelpScreen, context_text, help_context
+from offenders_help_content import HELP_BINDING, project_information
 from offenders_export_ui import ExportScreen
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
@@ -32,6 +34,10 @@ CHECK_INTERVAL_SECONDS = 30
 
 class DashboardFilter(Input):
     """Escape clears this transient query and returns to the dashboard table."""
+
+    def check_consume_key(self, key: str, character: str | None) -> bool:
+        """Reserve ? for global Help even while editing the filter."""
+        return False if character == "?" else super().check_consume_key(key, character)
 
     def on_key(self, event: events.Key) -> None:
         """Consume Escape locally so it cannot dismiss another screen."""
@@ -71,6 +77,7 @@ class OffendersApp(App):
 
     # Consolidated copy action: copies row in row-cursor mode, copies cell in cell-cursor mode
     BINDINGS = [
+        HELP_BINDING,
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         ("p", "period", "Period"),
@@ -90,6 +97,7 @@ class OffendersApp(App):
         """Track scheduled work and actual thread lifetime separately on cancellation."""
         super().__init__()
         self._workers = ActivityWorkers(self)
+        self._help_project_info = project_information()
         self._refresh_worker: Optional[Worker] = None
         self._build_lock = threading.Lock()
         self._active_period = DEFAULT_PERIOD
@@ -192,6 +200,19 @@ class OffendersApp(App):
         if jail in table.rows:
             table.move_cursor(row=table.get_row_index(jail))
         table.focus()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Limit global Help to product screens, excluding recursive Help."""
+        if action == "help":
+            return help_context(self) is not None
+        return super().check_action(action, parameters)
+
+    def action_help(self) -> None:
+        """Push a local guide while preserving the exact underlying screen."""
+        context = help_context(self)
+        if context is not None:
+            source = self if self.screen is self.default_screen else self.screen
+            self.push_screen(HelpScreen(context_text(context, source.BINDINGS), self._help_project_info))
 
     def action_export(self) -> None:
         """Open the committed report only from the dashboard, without acquisition."""

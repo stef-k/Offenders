@@ -13,6 +13,7 @@ from textual.widgets import Static
 from textual.worker import get_current_worker
 
 from offenders_activity import OffendersFooter
+from offenders_help_content import HELP_BINDING
 from offenders_geoip import geoip, resolve_data_root
 from offenders_geoip_update import UpdateError, read_state, set_auto, update
 
@@ -183,7 +184,7 @@ class GeoIPStatus(Static):
 class GeoIPScreen(ModalScreen):
     """Keyboard-first, scrollable diagnostics; no automatic first-run prompt."""
 
-    BINDINGS = [("escape", "dismiss", "Close"), ("q", "dismiss", "Close"),
+    BINDINGS = [HELP_BINDING, ("escape", "dismiss", "Close"), ("q", "dismiss", "Close"),
                 ("u", "update_now", "Update now"), ("a", "toggle_auto", "Auto on/off")]
 
     def __init__(self, status):

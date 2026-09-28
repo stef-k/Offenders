@@ -369,3 +369,37 @@ or a concurrent export. Unsupported platforms/filesystems fail closed; there is
 no unsafe rename fallback. Atomic visibility is guaranteed, not power-loss
 persistence. Handled failures clean staging; abrupt termination may leave hidden
 staging. Existing destination permissions are not modified.
+
+
+## Contextual Help
+
+`offenders_help.py` owns a single opaque full-screen `HelpScreen` modal. The
+app-level `action_help` admits only the explicit product-screen contexts; Help
+and framework screens such as Command Palette are excluded. It pushes over the
+existing screen rather than rebuilding it, preserving focus, selection, filter
+and scroll while normal background updates retain their existing ownership.
+Help has no workers or product actions and uses `OffendersFooter`.
+
+The small context catalogue curates action identities/order and short prose.
+`context_text` derives keys and descriptions from each source's runtime `BINDINGS`
+using Textual's binding normalization, grouping aliases and qualifying conditional
+copy actions. Four explicit Enter supplements cover table-selection events on the
+dashboard, jail detail, IP inspector and validation; real keyboard navigation tests
+prove their correspondence to runtime handlers. This is not a second key map.
+
+Textual 8 checks priority bindings before key dispatch but filters printable keys
+through the focused input's `check_consume_key`. `DashboardFilter` therefore
+reserves `?`, allowing the shared priority `HELP_BINDING` to reach the app action.
+GeoIP and command-output modals share that same binding because modal footer
+binding chains exclude the app. Help's modal boundary blocks ordinary inherited
+product actions; the app refuses recursive Help. Keep these precedence tests green
+on Textual upgrades rather than adding framework-wide event interception.
+
+`offenders_help_content.py` holds the single mini-manual and metadata helper.
+Periods/default come from the report module. At app construction, installed
+`importlib.metadata` Version and Project-URL fields are read once and cached;
+opening Help does not read files. Missing/unreadable metadata uses a bounded
+source-development version label and durable local URL fallbacks. Metadata and
+all guide content render as literal `Static(markup=False)` text, without Markdown,
+URL handlers or network requests. README and Usage document the global entrypoint;
+external documentation remains authoritative for operational detail.

@@ -38,6 +38,26 @@ already in Top IPs. Aggregate matching shows a whole bucket with its full counts
 not just matching events. The query survives refresh/period changes but not a
 restart. Live jail status and investigation retain their unfiltered context.
 
+## In-app Help
+
+Press `? Help` from any Offenders product screen, including the focused dashboard
+filter. The key is reserved for Help rather than inserted into the filter.
+The first section, **Current screen**, lists that screen's controls and explains
+what its data means. Below it, one concise mini-manual covers the dashboard,
+investigation, Export, GeoIP, Registration/RDNS, Coverage and validation, current
+CLI commands, safety distinctions, installed version and project links.
+
+Use arrow keys, PageUp/PageDown or Home/End to scroll; `Esc/q` returns to the exact
+underlying screen with its filter, selection and scroll intact. Pressing `?`
+inside Help does not stack another guide. Help starts no acquisition, export or
+network work and executes no product actions. Existing background work can
+continue and remains visible in the normal one-row footer. URLs are literal text;
+Help neither fetches remote documentation nor opens a browser. The command palette
+retains its native interface.
+
+This is a compact reference; the external documentation remains authoritative for
+installation, permissions, CSV schemas and deeper operational semantics.
+
 ## Background activity
 
 The one-row footer on every Offenders product screen, including detail and command-output modals,
@@ -66,6 +86,8 @@ contexts rather than promising every app binding on every modal.
 
 | Context | Key/action | Result |
 | --- | --- | --- |
+| All product screens | `?` | Open contextual Help and the complete mini-manual |
+| Help | Esc / `q` | Return to the underlying screen |
 | Dashboard | `q` | Quit |
 | Dashboard; jail/IP detail | `r` / `p` | Refresh / request next period (when no refresh is running) |
 | Dashboard | `f` | Focus filter; Enter keeps query and returns to table; Esc clears and returns |
