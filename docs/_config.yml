@@ -6,7 +6,7 @@ plugins:
 
 # Project identity and repository-scoped Pages URL.
 title: Offenders
-description: Fail2Ban investigation and coverage TUI.
+description: Fail2Ban investigation and diagnostics TUI.
 url: https://stef-k.github.io
 baseurl: /Offenders
 repository: stef-k/Offenders

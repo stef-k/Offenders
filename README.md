@@ -1,18 +1,19 @@
-# Offenders (Fail2Ban TUI)
+# Offenders — Fail2Ban investigation and diagnostics TUI
 
-[![PyPI](https://img.shields.io/pypi/v/offenders?label=PyPI)](https://pypi.org/project/offenders/) [![Python](https://img.shields.io/pypi/pyversions/offenders)](https://stef-k.github.io/Offenders/installation.html) [![Release checks](https://img.shields.io/github/actions/workflow/status/stef-k/Offenders/release.yml?event=release&label=release%20checks)](https://github.com/stef-k/Offenders/actions/workflows/release.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/offenders?label=PyPI)](https://pypi.org/project/offenders/) [![Python](https://img.shields.io/pypi/pyversions/offenders)](https://stef-k.github.io/Offenders/installation.html) [![Release checks](https://img.shields.io/github/actions/workflow/status/stef-k/Offenders/release.yml?event=release&label=release%20checks)](https://github.com/stef-k/Offenders/actions/workflows/release.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/stef-k/Offenders/blob/master/LICENSE)
 
-Offenders is a Linux terminal dashboard for Fail2Ban history and live jail status.
-Inspect banned IPs, ASN/Country summaries, jail settings and current membership;
-run on-demand Registration/RDNS lookups or a manual Coverage analysis for review.
+Offenders is a terminal-first investigation and diagnostics tool for Fail2Ban.
+Combine historical ban activity with current jail state, investigate IPs and jails,
+and explore IP/ASN/Country summaries over SSH or in a local Linux terminal.
+Use explicit Registration/RDNS lookups, optional GeoIP, manual Coverage and
+validation, CSV Export, and global contextual `? Help`.
 
 ![Offenders TUI screenshot](https://raw.githubusercontent.com/stef-k/Offenders/master/offenders-screenshot.jpg)
 
-Earlier dashboard illustration with synthetic documentation addresses and no GeoIP
-databases; the current application uses the Registration label and shared activity footer.
+Current Offenders dashboard using synthetic documentation data.
 
 - Export a committed report with `e`, or acquire one fresh CSV bundle with
-  `offenders export --period 30d` (see [Usage](docs/usage.md#csv-export)).
+  `offenders export --period 30d` (see [Usage](https://stef-k.github.io/Offenders/usage.html#csv-export)).
 - Press `? Help` from any product screen for contextual controls and a concise
   in-app guide; `Esc/q` returns to your place.
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.

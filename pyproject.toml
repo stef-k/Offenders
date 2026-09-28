@@ -1,4 +1,4 @@
-# Install the dashboard and its concrete report/status modules together.
+# Install the investigation TUI and its concrete modules together.
 [build-system]
 requires = ["setuptools>=77,<83"]
 build-backend = "setuptools.build_meta"
@@ -6,12 +6,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "offenders"
 version = "0.2.1"
-description = "A Fail2Ban log and jail dashboard for the terminal"
+description = "A terminal investigation and diagnostics tool for Fail2Ban"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["fail2ban", "terminal", "dashboard", "linux"]
+keywords = ["fail2ban", "tui", "terminal", "linux", "sysadmin", "diagnostics"]
 classifiers = [
     "Environment :: Console",
     "Intended Audience :: System Administrators",

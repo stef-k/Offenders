@@ -5,7 +5,9 @@ permalink: /
 
 # Offenders documentation
 
-Offenders investigates Fail2Ban history and live jail status from a Linux terminal.
+Offenders is a terminal investigation and diagnostics tool for Fail2Ban.
+Explore historical activity and current jail state, investigate IPs and jails,
+export CSV reports, and press `? Help` for contextual guidance.
 Reports are read-only with respect to Fail2Ban configuration and bans; Coverage
 results are manual and copy-only. GeoIP enrichment is optional.
 
