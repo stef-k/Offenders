@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
-# Require the complete timestamp and address token, never a valid prefix.
+# Require complete tokens and valid wall-clock ranges on every Python version.
+# Calendar dates remain validated by datetime.fromisoformat().
 _TIMESTAMP_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[,.]\d{1,6})?)\s+"
+    r"^(\d{4}-\d{2}-\d{2} (?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:[,.]\d{1,6})?)\s+"
 )
 _BAN_RE = re.compile(r"\bBan\s+(\S+)")
 _BRACKET_RE = re.compile(r"\[([^\]]*)\]")
