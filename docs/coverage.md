@@ -41,6 +41,6 @@ filter text validates with all tested target lines matched and none missed/ignor
 Partial results retain their limitations. Withheld results cannot be copied.
 
 Candidates start `enabled = false`, inherit local ban policy for operator review,
-and are copy-only. Wiring has not been activated or daemon-tested. Offenders never
-writes suggested configuration files, installs/enables/reloads jails, or bans or
-unbans an IP. Review evidence and local policy independently before any manual use.
+and are copy-only. Offenders does not daemon-test generated candidates, write
+suggested configuration files, install/enable/reload jails, or ban or unban an IP.
+Review evidence and local policy independently before any manual use.

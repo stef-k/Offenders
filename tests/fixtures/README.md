@@ -1,9 +1,9 @@
 # Fixture provenance
 
-`status-1.0.2-live.txt` and `status-sshd-1.0.2-live.txt` preserve stdout from
-read-only `sudo -n /usr/bin/fail2ban-client status` and `status sshd` inspection
-on 2026-09-27. The inspected server reported Fail2Ban 1.0.2: eight jails and zero
-current/total bans in sshd. No server mutation was performed.
+`status-1.0.2-live.txt` and `status-sshd-1.0.2-live.txt` are sanitized Fail2Ban 1.0.2
+stdout captures obtained through read-only `sudo -n /usr/bin/fail2ban-client status`
+and `status sshd` calls. They exercise jail-list parsing and extraction of the
+currently banned count from the status tree.
 
 `status.txt` and `status-sshd.txt` are synthetic representative outputs, covering
 multiple jails and a nonzero current-ban count distinct from total bans and failed
