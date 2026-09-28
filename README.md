@@ -1,5 +1,7 @@
 # Offenders (Fail2Ban TUI)
 
+[![PyPI](https://img.shields.io/pypi/v/offenders?label=PyPI)](https://pypi.org/project/offenders/) [![Python](https://img.shields.io/pypi/pyversions/offenders)](https://pypi.org/project/offenders/) [![Release checks](https://img.shields.io/github/actions/workflow/status/stef-k/Offenders/release.yml?event=release&label=release%20checks)](https://github.com/stef-k/Offenders/actions/workflows/release.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Offenders is a Linux terminal dashboard for Fail2Ban history and live jail status.
 Inspect banned IPs, ASN/Country summaries, jail settings and current membership;
 run on-demand Registration/RDNS lookups or a manual Coverage analysis for review.
