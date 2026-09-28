@@ -284,7 +284,7 @@ def validate_existing(inventory: FindingInventory, decision: FindingDecision, ta
 
 def validate_custom(inventory: FindingInventory, decision: FindingDecision, text: str,
                     *, config_root: Path = Path("/etc/fail2ban")) -> FilterValidation:
-    """Backend-only prospective text validation for the later custom workflow."""
+    """Validate prospective filter text for copy-only custom candidates."""
     result = FilterValidation(decision, "custom", validated_at=datetime.now(timezone.utc))
     try:
         if (decision.classification != "custom_gap_candidate"
