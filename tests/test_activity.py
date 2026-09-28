@@ -13,6 +13,7 @@ from textual.worker import WorkerFailed
 from offenders import OffendersApp
 from offenders_activity import ActivityStatus, ActivityWorkers, OffendersFooter
 from offenders_ip_ui import CommandOutputModal
+from offenders_jail_ui import JailDetailScreen
 from test_refresh import report, rendered
 
 
@@ -174,7 +175,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
                 clock.return_value = 10.49
                 app.workers.refresh_activity()
                 self.assertEqual(self.visible(app), "⏳ Refreshing…")
-                await app.push_screen(Screen())
+                await app.push_screen(JailDetailScreen("sshd", report(), lambda ip: None))
                 await pilot.pause()
                 self.assertEqual(self.visible(app), "⏳ Refreshing…")
                 release = asyncio.Event()
@@ -184,6 +185,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 footer = app.screen.query_one(OffendersFooter)
                 status = footer.query_one(ActivityStatus)
+                self.assertEqual(len(app.screen.query(OffendersFooter)), 1)
                 self.assertEqual(footer.region.height, 1)
                 self.assertEqual(footer.region.bottom, 16)
                 self.assertLessEqual(status.region.width, 18)
@@ -191,6 +193,20 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(self.visible(app).startswith("⏳ Loading"))
                 slow.cancel()
                 await pilot.pause()
+                self.assertEqual(self.visible(app), "")
+                self.assertEqual(footer.region.height, 1)
+                # Error completion follows the same presentation-only hold.
+                async def fail():
+                    raise RuntimeError("bounded presentation failure")
+
+                failed = app.run_worker(fail(), exit_on_error=False)
+                with self.assertRaises(WorkerFailed):
+                    await failed.wait()
+                await pilot.pause()
+                self.assertEqual(app.workers.activity_text, "")
+                self.assertEqual(self.visible(app), "⏳ Working…")
+                clock.return_value = 11.5
+                app.workers.refresh_activity()
                 self.assertEqual(self.visible(app), "")
 
     async def test_real_timer_clears_fast_work_without_delaying_results(self):
