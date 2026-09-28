@@ -85,7 +85,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(copy.call_count, 2)
                     copy.assert_called_with("42")
                     await pilot.press("t")
-                for key, tool in (("w", "whois"), ("d", "rdns")):
+                for key, tool in (("w", "registration"), ("d", "rdns")):
                     await pilot.press(key)
                     await app.workers.wait_for_complete()
                     screen, focus = app.screen, app.focused

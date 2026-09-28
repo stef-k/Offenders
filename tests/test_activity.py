@@ -107,7 +107,7 @@ class ActivityTests(unittest.IsolatedAsyncioTestCase):
         app = OffendersApp()
         async with app.run_test() as pilot:
             await app.workers.wait_for_complete()
-            for tool, label, dismiss in (("whois", "Running WHOIS…", False),
+            for tool, label, dismiss in (("registration", "Querying RDAP…", False),
                                          ("rdns", "Resolving PTR…", True)):
                 started, release, finished = threading.Event(), threading.Event(), threading.Event()
 

@@ -6,12 +6,13 @@ from dataclasses import replace
 from unittest.mock import patch
 
 from textual.widgets import DataTable, Static
+from ipwhois.exceptions import HTTPLookupError
 
 from offenders import OffendersApp
-from offenders_fail2ban import CommandFailure, CommandResult, JailStatus
+from offenders_fail2ban import JailStatus
 from offenders_geoip import Enrichment, LookupResult
 from offenders_ip import project_ip
-from offenders_ip_ui import CommandOutputModal, IPInspectorScreen, ip_details, lookup_output
+from offenders_ip_ui import CommandOutputModal, IPInspectorScreen, ip_details
 from offenders_jail_ui import JailDetailScreen
 from offenders_report import Offender
 from test_ip import NOW, UNMAPPED, report
@@ -27,33 +28,8 @@ def snapshot():
     return replace(report(events, statuses, [Offender(IP, 3, "", "", "", UNMAPPED)]), period="7d")
 
 
-class CommandTests(unittest.TestCase):
-    """Only the missing-command category may select an alternate DNS tool."""
-
-    def test_fixed_commands_failures_and_bounded_output(self):
-        """Preserve streams/categories, empty success, and exact fallback semantics."""
-        for failure in (None, *CommandFailure):
-            with self.subTest(failure=failure), patch("offenders_ip_ui.run_host_command") as run:
-                run.side_effect = [CommandResult(1, "out", "err", failure, "detail"),
-                                   CommandResult(0, "fallback", "")]
-                output = lookup_output(IP, "rdns")
-                self.assertEqual(run.call_args_list[0].args, (["dig", "+short", "-x", IP],))
-                self.assertEqual(run.call_args_list[0].kwargs, {"timeout": 8, "sudo": False})
-                self.assertEqual(run.call_count, 2 if failure == CommandFailure.NOT_FOUND else 1)
-                self.assertIn("stdout:\nout", output)
-                self.assertIn("stderr:\nerr", output)
-                if failure:
-                    self.assertIn(failure.value, output)
-                if run.call_count == 2:
-                    run.assert_called_with(["getent", "hosts", IP], timeout=8, sudo=False)
-                    self.assertIn("$ getent hosts", output)
-        with patch("offenders_ip_ui.run_host_command", return_value=CommandResult(0, "", "")) as run:
-            self.assertIn("(no output)", lookup_output(IP, "whois"))
-            run.assert_called_once_with(["whois", IP], timeout=8, sudo=False)
-            run.return_value = CommandResult(0, "a" * 210_000, "")
-            output = lookup_output(IP, "whois")
-            self.assertLess(len(output), 200_100)
-            self.assertTrue(output.endswith("(output truncated)"))
+class DetailTests(unittest.TestCase):
+    """Snapshot details preserve literal enrichment states."""
 
     def test_complete_details_and_enrichment_states(self):
         """Mapped, healthy-unmapped, and unavailable stay distinct in literal text."""
@@ -81,13 +57,13 @@ class InspectorTests(unittest.IsolatedAsyncioTestCase):
         source = snapshot()
         ui_thread = threading.get_ident()
         calls = []
-        def runner(args, **kwargs):
-            """Record actual worker execution without executing a network command."""
-            calls.append((args, kwargs, threading.get_ident()))
-            return CommandResult(0, "answer", "")
+        def runner(ip, tool):
+            """Record actual worker execution without performing network I/O."""
+            calls.append((ip, tool, threading.get_ident()))
+            return "[red]literal answer"
         with patch("offenders.build_report", return_value=source) as build, \
              patch("offenders_geoip_ui.read_state", return_value={}), \
-             patch("offenders_ip_ui.run_host_command", side_effect=runner), \
+             patch("offenders_ip_ui.lookup_output", side_effect=runner), \
              patch("offenders_ip_ui.project_ip", side_effect=lambda r, ip: project_ip(
                  r, ip, lookup=lambda address: UNMAPPED)):
             app = OffendersApp()
@@ -146,18 +122,21 @@ class InspectorTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.press("r")
                 await app.workers.wait_for_complete()
                 self.assertIs(inspector.projection, before)
-                for key, command in (("w", ["whois", IP]), ("d", ["dig", "+short", "-x", IP])):
+                for key, tool in (("w", "registration"), ("d", "rdns")):
                     await pilot.press(key)
                     await app.workers.wait_for_complete()
                     modal = app.screen
                     self.assertIsInstance(modal, CommandOutputModal)
+                    self.assertEqual(modal.tool, tool)
+                    self.assertEqual(modal._output_text, "[red]literal answer")
+                    self.assertEqual("".join(line.text for line in modal.query_one("#cmd-out").lines), modal._output_text)
                     with patch.object(app, "copy_to_clipboard") as copy:
                         await pilot.press("c")
                         copy.assert_called_once_with(modal._output_text)
                     with patch.object(app, "copy_to_clipboard", side_effect=RuntimeError), patch("builtins.print") as output:
                         await pilot.press("c")
                         output.assert_called_once_with(modal._output_text)
-                    self.assertEqual(calls[-1][:2], (command, {"timeout": 8, "sudo": False}))
+                    self.assertEqual(calls[-1][:2], (IP, tool))
                     self.assertNotEqual(calls[-1][2], ui_thread)
                     await pilot.press("q")
                 await pilot.press("escape")
@@ -169,12 +148,36 @@ class InspectorTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press(key)
                     await app.workers.wait_for_complete()
                     self.assertIsInstance(app.screen, CommandOutputModal)
+                    self.assertEqual(app.screen.tool, "registration" if key == "w" else "rdns")
                     await pilot.press("escape")
                 await pilot.press("enter")
                 await app.workers.wait_for_complete()
                 self.assertEqual(app.screen.ip, IP)
                 await pilot.press("escape")
                 self.assertEqual(build.call_count, 4)
+
+    async def test_provider_failure_is_literal_copyable_result(self):
+        """A real backend failure completes normally and retains action wording."""
+        with patch("offenders.build_report", return_value=snapshot()), \
+             patch("offenders_geoip_ui.read_state", return_value={}), \
+             patch("offenders_lookup.IPWhois") as provider:
+            provider.return_value.lookup_rdap.side_effect = HTTPLookupError("offline")
+            app = OffendersApp()
+            async with app.run_test() as pilot:
+                await app.workers.wait_for_complete()
+                for screen_type in (OffendersApp, IPInspectorScreen):
+                    self.assertIn(("w", "registration", "Registration"), screen_type.BINDINGS)
+                    self.assertIn(("d", "rdns", "RDNS"), screen_type.BINDINGS)
+                modal = CommandOutputModal("8.8.8.8", "registration")
+                await app.push_screen(modal)
+                await app.workers.wait_for_complete()
+                self.assertIn("Outcome: rdap-unavailable", modal._output_text)
+                self.assertEqual("".join(line.text for line in modal.query_one("#cmd-out").lines),
+                                 modal._output_text.replace("\n", ""))
+                with patch.object(app, "copy_to_clipboard") as copy:
+                    await pilot.press("c")
+                    copy.assert_called_once_with(modal._output_text)
+                await pilot.press("q")
 
     async def test_off_loop_overlapping_results_and_dismissal(self):
         """A non-top projection may block without freezing UI or winning a race."""

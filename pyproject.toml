@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
 ]
-dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4"]
+dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4", "dnspython>=2.8,<3", "ipwhois>=1.3,<2"]
 
 # Public support and source locations; no maintainer-private contact details.
 [project.urls]
@@ -29,4 +29,4 @@ Issues = "https://github.com/stef-k/Offenders/issues"
 offenders = "offenders:main"
 
 [tool.setuptools]
-py-modules = ["offenders", "offenders_activity", "offenders_host", "offenders_sources", "offenders_evidence", "offenders_patterns", "offenders_findings", "offenders_recommendations_ui", "offenders_validation", "offenders_validation_ui", "offenders_candidate", "offenders_candidate_ui", "offenders_coverage", "offenders_report", "offenders_filter", "offenders_aggregate", "offenders_summary_ui", "offenders_ip", "offenders_ip_ui", "offenders_events", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui", "offenders_jail_ui"]
+py-modules = ["offenders", "offenders_activity", "offenders_host", "offenders_sources", "offenders_evidence", "offenders_patterns", "offenders_findings", "offenders_recommendations_ui", "offenders_validation", "offenders_validation_ui", "offenders_candidate", "offenders_candidate_ui", "offenders_coverage", "offenders_report", "offenders_filter", "offenders_aggregate", "offenders_summary_ui", "offenders_ip", "offenders_ip_ui", "offenders_lookup", "offenders_events", "offenders_fail2ban", "offenders_geoip", "offenders_geoip_update", "offenders_geoip_cli", "offenders_geoip_ui", "offenders_jail_ui"]

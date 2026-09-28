@@ -37,7 +37,8 @@ explicit inventory. Neither workflow silently starts the other.
 | In-memory display filtering | `offenders_filter.py` |
 | Aggregate projections and presentation | `offenders_aggregate.py`, `offenders_summary_ui.py` |
 | Jail history and current-ban details | `offenders_jail_ui.py` |
-| Report-derived IP projection, inspector, WHOIS/RDNS UI | `offenders_ip.py`, `offenders_ip_ui.py` |
+| Report-derived IP projection, inspector, Registration/RDNS UI | `offenders_ip.py`, `offenders_ip_ui.py` |
+| Explicit PTR/RDAP acquisition, normalized outcomes, bounded literal text | `offenders_lookup.py` |
 
 ## Dashboard and report path
 
@@ -55,10 +56,18 @@ identity checks prevent stale completions from committing.
 Filtering, jail/IP navigation, and aggregate views reuse the committed report
 instead of rediscovering host state. IP/aggregate projections may perform local
 GeoIP lookups for addresses outside the enriched top list. Report collection,
-those projections, and explicit WHOIS/RDNS subprocess work run off the Textual
+those projections, and explicit Registration/RDNS Python network work run off the Textual
 event loop. Screens reject stale deliveries after replacement or closure.
 Navigation callbacks keep jail and IP screens independent of app imports.
-See [usage](docs/usage.md) for operator controls.
+`offenders_lookup` directly depends on `dnspython` and classic `ipwhois`; pipx
+installs both. PTR uses the host-configured resolver with a finite lifetime and no
+NSS fallback. Registration preflights global unicast addresses and uses shallow,
+zero-retry RDAP with bootstrap enabled, without ASN/NIR/entity follow-ups. RDAP's
+finite transport timeout does not imply a total deadline across redirects, and
+its public transport errors intentionally share `rdap-unavailable`. Provider seams
+are mocked in ordinary tests; no DNS/RDAP requests run during them. The generic
+host-command runner remains owned by Fail2Ban/host acquisition.
+See [usage](docs/usage.md) for operator controls and outcome categories.
 
 ## Background activity convention
 
@@ -97,7 +106,7 @@ The current asynchronous audit covers all ten worker paths:
 | GeoIP mount / opted-in startup update | `_startup`: checking, then updating |
 | GeoIP Update now | `update_now`: updating |
 | GeoIP automatic-policy toggle | `toggle_auto`: saving policy |
-| Explicit WHOIS / RDNS | `CommandOutputModal._run`: provider-specific working text |
+| Explicit Registration / RDNS | `CommandOutputModal._run`: provider-specific working text |
 | IP mount / successful new report | `IPInspectorScreen._project`: loading details |
 | Coverage mount | `_analyze`: analyzing coverage |
 | Selected filter validation | `_validate`: validating |
@@ -192,7 +201,7 @@ distinct. A missing target behind sudo is observed as sudo's nonzero exit.
 Timeout kills and reaps the direct child.
 
 Fail2Ban queries use the sudo boundary, as does optional listener process-owner
-inspection. Basic listeners, systemd/journal queries, WHOIS/RDNS, static config/log
+inspection. Basic listeners, systemd/journal queries, Registration/RDNS, static config/log
 reads, and regex validation use current-user permissions. Command output is
 captured before downstream parse/retention caps; those caps are not streaming
 subprocess-memory limits. Permission recipes belong in

@@ -12,41 +12,9 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, RichLog, Static
 from textual.worker import get_current_worker
 
-from offenders_fail2ban import CommandFailure, run_host_command
+from offenders_lookup import lookup_output
 from offenders_ip import IPProjection, project_ip
 from offenders_report import Report
-
-# Each explicit tool invocation has a finite deadline and bounded presentation.
-COMMAND_TIMEOUT = 8
-OUTPUT_LIMIT = 200_000
-
-
-def lookup_output(ip: str, tool: str) -> str:
-    """Use fixed arguments; only a missing dig permits the getent fallback."""
-    ip = ipaddress.ip_address(ip).compressed
-    if tool not in ("whois", "rdns"):
-        raise ValueError("Unknown IP tool")
-    command = ["whois", ip] if tool == "whois" else ["dig", "+short", "-x", ip]
-    sections = []
-    while True:
-        result = run_host_command(command, timeout=COMMAND_TIMEOUT, sudo=False)
-        sections.append(f"$ {' '.join(command)}")
-        if result.failure is not None:
-            sections.append(f"{result.failure.value} (exit={result.returncode}): {result.detail}")
-        if result.stdout:
-            sections.append("stdout:\n" + result.stdout)
-        if result.stderr:
-            sections.append("stderr:\n" + result.stderr)
-        if result.failure is None and not (result.stdout or result.stderr).strip():
-            sections.append("(no output)")
-        if command[0] != "dig" or result.failure != CommandFailure.NOT_FOUND:
-            break
-        command = ["getent", "hosts", ip]
-    output = "\n".join(sections)
-    if len(output) > OUTPUT_LIMIT:
-        output = output[:OUTPUT_LIMIT] + "\n(output truncated)"
-    return output
-
 
 class CommandOutputModal(ModalScreen[None]):
     """Run an explicit lookup off-loop and retain literal, copyable output."""
@@ -59,10 +27,10 @@ class CommandOutputModal(ModalScreen[None]):
         self.ip = ipaddress.ip_address(ip).compressed
         self.tool = tool
         self._output_text = ""
-        self.working_text = "Running WHOIS…" if tool == "whois" else "Resolving PTR…"
+        self.working_text = "Querying RDAP…" if tool == "registration" else "Resolving PTR…"
 
     def compose(self) -> ComposeResult:
-        """Show the chosen IP while its command is running."""
+        """Show the chosen IP while its lookup is running."""
         yield Static(f"{self.tool.upper()} {self.ip}", markup=False)
         yield RichLog(id="cmd-out", wrap=True)
 
@@ -123,7 +91,7 @@ class IPInspectorScreen(Screen[None]):
     """Keep one normalized IP and navigation context across successful reports."""
 
     BINDINGS = [("escape", "dismiss", "Back"), ("q", "dismiss", "Back"),
-                ("w", "whois", "Whois"), ("d", "rdns", "RDNS")]
+                ("w", "registration", "Registration"), ("d", "rdns", "RDNS")]
     DEFAULT_CSS = """
     IPInspectorScreen #ip-jails { height: 8; }
     IPInspectorScreen #ip-events { height: 12; }
@@ -202,9 +170,9 @@ class IPInspectorScreen(Screen[None]):
         if key.value is not None:
             self.open_jail(key.value)
 
-    def action_whois(self) -> None:
+    def action_registration(self) -> None:
         """Always inspect this screen's fixed IP, independent of table focus."""
-        self.app.push_screen(CommandOutputModal(self.ip, "whois"))
+        self.app.push_screen(CommandOutputModal(self.ip, "registration"))
 
     def action_rdns(self) -> None:
         """Run reverse DNS only after the explicit keyboard action."""

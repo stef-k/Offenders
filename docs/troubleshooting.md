@@ -14,7 +14,7 @@ title: Troubleshooting
 | GeoIP stale | Local age exceeds 62 days; readable data remains usable. Choose an explicit update if desired. |
 | Refresh/GeoIP operation already in progress | The request was not queued or started again. Wait for the activity line to clear, then retry if needed. A pending period label does not change the committed report. |
 | GeoIP update failure | Read the latest outcome; usable active data is preserved. Check the reported network/storage/validation error before choosing another explicit attempt. |
-| WHOIS/RDNS unavailable | Check the named optional tool and command failure; RDNS falls back to getent only when dig is missing. |
+| Registration/RDNS request failed | Read the outcome: check host DNS configuration for `resolver-unavailable`, DNS reachability for `timeout`/`dns-failure`, and outbound RDAP access for `rdap-unavailable`. `no-result` means no PTR answer; `not-global` skips registration traffic. A rate limit requires waiting before another explicit request. |
 | Coverage partial/unavailable | Read source limitations for owner/journal/config/log access. Optional evidence failure is not proof of no exposure or complete protection. |
 | Unexpected old dashboard or unrecognized GeoIP command | Use `command -v offenders` and Bash `type -a offenders` to check whether the retained standalone executable shadows pipx. |
 
@@ -22,3 +22,7 @@ title: Troubleshooting
 
 There is no generic user configuration file. Periods are fixed runtime choices;
 GeoIP data and automatic policy are user-owned XDG state.
+
+Registration/RDNS dependencies are installed with Offenders. A missing Python
+import indicates an incomplete installation: reinstall the package in its pipx
+environment. A temporary request failure does not disable either action.

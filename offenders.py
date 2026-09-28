@@ -80,7 +80,7 @@ class OffendersApp(App):
         ("c", "copy_selection", "Copy"),
         ("x", "copy_selection", "Copy"),
         ("t", "toggle_cursor", "Row/Cell"),
-        ("w", "whois", "Whois"),
+        ("w", "registration", "Registration"),
         ("d", "rdns", "RDNS"),
     ]
 
@@ -344,9 +344,9 @@ class OffendersApp(App):
         else:
             self.notify("Select an IP in the Top banned IPs or Last bans tables", timeout=2.0)
 
-    def action_whois(self) -> None:
-        """Preserve the dashboard WHOIS binding."""
-        self._open_ip_tool("whois")
+    def action_registration(self) -> None:
+        """Preserve the dashboard registration binding."""
+        self._open_ip_tool("registration")
 
     def action_rdns(self) -> None:
         """Preserve the dashboard reverse DNS binding."""
