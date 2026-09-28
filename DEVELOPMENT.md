@@ -85,10 +85,10 @@ Worker identities preserve overlapping operations. No manual start/stop pairing
 is required. Screen-local detailed feedback remains with its existing owner.
 `OffendersFooter` combines the native Textual `Footer` (binding visibility,
 clicks, and horizontal scrolling) with a right-aligned literal `ActivityStatus`.
-Every product screen composes it; the screen-change hook supplies a fallback for
-other screens. Command-output modals use the same footer. Its height stays one
-row; the activity label is ellipsized at 45% of available width so bindings retain
-space on narrow terminals. The old separate top row is removed.
+Every product screen composes `OffendersFooter` explicitly; framework and
+non-product screens retain their native layout. Command-output modals use the
+same footer. Its height stays one row; the activity label is ellipsized at 45% of
+available width so bindings retain space on narrow terminals. The old separate top row is removed.
 
 The manager retains one shared presentation deadline using a monotonic clock and
 an app-owned Textual timer. The first activity in a continuous visible interval
