@@ -8,7 +8,8 @@ run on-demand Registration/RDNS lookups or a manual Coverage analysis for review
 
 ![Offenders TUI screenshot](https://raw.githubusercontent.com/stef-k/Offenders/master/offenders-screenshot.jpg)
 
-Current dashboard with synthetic documentation addresses and no GeoIP databases.
+Earlier dashboard illustration with synthetic documentation addresses and no GeoIP
+databases; the current application uses the Registration label and shared activity footer.
 
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
