@@ -9,9 +9,10 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import DataTable, Footer, RichLog, Static
+from textual.widgets import DataTable, RichLog, Static
 from textual.worker import get_current_worker
 
+from offenders_activity import OffendersFooter
 from offenders_lookup import lookup_output
 from offenders_ip import IPProjection, project_ip
 from offenders_report import Report
@@ -33,6 +34,7 @@ class CommandOutputModal(ModalScreen[None]):
         """Show the chosen IP while its lookup is running."""
         yield Static(f"{self.tool.upper()} {self.ip}", markup=False)
         yield RichLog(id="cmd-out", wrap=True)
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         """Start only after the output widget is mounted."""
@@ -112,7 +114,7 @@ class IPInspectorScreen(Screen[None]):
             yield DataTable(id="ip-jails", cursor_type="row")
             yield Static("Recent historical events (newest ten)")
             yield DataTable(id="ip-events", cursor_type="row")
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         """Initialize table schemas before scheduling the local projection."""

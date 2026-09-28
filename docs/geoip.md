@@ -42,8 +42,8 @@ into user-owned storage. Updates validate both files before activation; failed
 acquisition preserves usable active data. Successful activation becomes visible
 without restarting through normal report refresh. A dashboard update requests a
 refresh; if collection is already running, the next normal refresh picks it up.
-Diagnostics show update errors separately from report health. The shared activity
-line shows startup checks, `Updating GeoIP…`, and policy persistence. An accepted
+Diagnostics show update errors separately from report health. The shared footer activity
+indicator shows startup checks, `Updating GeoIP…`, and policy persistence. An accepted
 update immediately replaces the previous feedback, then shows activation, no
 update needed, or an error. Repeating Update now or toggling policy while a GeoIP
 operation is active reports that it is already in progress. Closing diagnostics

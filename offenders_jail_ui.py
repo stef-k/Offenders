@@ -7,8 +7,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Static
+from textual.widgets import DataTable, Static
 
+from offenders_activity import OffendersFooter
 from offenders_report import Report
 
 
@@ -72,7 +73,7 @@ class JailDetailScreen(Screen[None]):
             yield Static(jail_details(self.jail, self.report), id="jail-details")
             yield Static("", id="jail-history-summary")
             yield DataTable(id="jail-history", cursor_type="row")
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         """Create the history columns once and project the initial snapshot."""

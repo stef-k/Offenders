@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import offenders
-from offenders_activity import ActivityStatus
+from offenders_activity import ActivityStatus, ActivityWorkers
 import offenders_geoip_ui as ui
 import offenders_geoip_update as updater
 from offenders_geoip import CandidateHealth, DatabaseHealth
@@ -49,6 +49,7 @@ class PresentationTests(unittest.TestCase):
             self.assertIn("Update now", text)
 
 
+@patch.object(ActivityWorkers, "MINIMUM_VISIBLE", 0)
 class ActionsTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         """Keep policy writes and all background work away from real data/network."""

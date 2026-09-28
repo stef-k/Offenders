@@ -9,9 +9,10 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Static
+from textual.widgets import Static
 from textual.worker import get_current_worker
 
+from offenders_activity import OffendersFooter
 from offenders_geoip import geoip, resolve_data_root
 from offenders_geoip_update import UpdateError, read_state, set_auto, update
 
@@ -192,7 +193,7 @@ class GeoIPScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield Static(id="geoip-details")
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self):
         """Show the latest app-lifetime health and lifecycle snapshots."""

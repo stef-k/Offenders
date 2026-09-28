@@ -8,8 +8,9 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.worker import get_current_worker
-from textual.widgets import DataTable, Footer, Static
+from textual.widgets import DataTable, Static
 
+from offenders_activity import OffendersFooter
 from offenders_validation_ui import ValidationScreen
 from offenders_candidate_ui import CustomCandidateScreen
 from offenders_host import discover_host_inventory
@@ -149,7 +150,7 @@ class RecommendationsScreen(Screen):
         yield DataTable(id="coverage-findings", cursor_type="row")
         with VerticalScroll(id="coverage-scroll"):
             yield Static("", id="coverage-detail", markup=False)
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         """Opening is the only trigger; no rerun action or timer is installed."""

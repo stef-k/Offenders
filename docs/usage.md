@@ -25,7 +25,7 @@ visible Top IP total. Last bans displays the newest ten events.
 Reports refresh at startup, every 30 seconds, and on request. Only one refresh
 runs at a time; a manual refresh or period request while busy reports that refresh
 is in progress and must be retried afterward.
-A shared status line shows `Refreshing…` or a pending target such as `Loading 30d…`
+The shared footer shows `⏳ Refreshing…` or a pending target such as `⏳ Loading 30d…`
 while the last successful tables remain visible. A period change commits only on success. Failure retains last-known-good tables,
 period, and timestamp with a degraded message; before the first success, data is
 explicitly unavailable. A successful recovery replaces the data and clears the
@@ -40,14 +40,22 @@ restart. Live jail status and investigation retain their unfiltered context.
 
 ## Background activity
 
-A text status line on every screen shows accepted background work immediately
-and clears when it completes, fails, or is cancelled. Overlapping operations keep
-the line active until all finish; a count indicates multiple active operations.
+The one-row footer on every screen, including detail and command-output modals,
+combines contextual key bindings with a right-aligned `⏳ Refreshing…` activity
+indicator. It appears immediately and remains visible for at least about 500 ms,
+even if work has already finished. Only the visual clear is deferred: results,
+navigation, cancellation, and accepting another operation remain immediate.
+Overlapping work shows a primary label and `(+N)` additional workers without
+flickering. Long-running work stays visible until it finishes. On narrow terminals
+the label is ellipsized to at most 45% of the row; native footer bindings retain
+their scrolling and click behavior. Activity never adds a row or moves content.
+
 Coverage, validation, generation, and projections retain their detailed local
-loading states. Automatic refresh uses this quiet line, without repeated popups.
-Filtering, copying, and other immediate local actions do not show busy feedback.
-Closing a lookup or analysis view clears its activity and ignores late results;
-closing GeoIP diagnostics leaves its app-lifetime update running visibly.
+loading states. Automatic refresh uses this quiet indicator without repeated
+popups. Filtering, copying, and other immediate local actions do not show it.
+Closing a lookup or analysis view cancels its activity and ignores late results;
+the brief visual hold may remain. Closing GeoIP diagnostics leaves its
+app-lifetime update running visibly.
 
 ## Key and action map
 

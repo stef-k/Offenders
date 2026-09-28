@@ -4,9 +4,10 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Static
+from textual.widgets import DataTable, Static
 from textual.worker import get_current_worker
 
+from offenders_activity import OffendersFooter
 from offenders_validation import FilterValidation, eligible_targets, validate_existing
 
 # Aggregate context evidence cannot establish a false-positive rate or suitability.
@@ -77,7 +78,7 @@ class ValidationScreen(Screen):
         yield DataTable(id="validation-targets", cursor_type="row")
         with VerticalScroll(id="validation-scroll"):
             yield Static("Ready to validate" if self.targets else NO_TARGET, id="validation-detail", markup=False)
-        yield Footer()
+        yield OffendersFooter()
 
     def on_mount(self) -> None:
         """Preserve the exact target tuple rather than reconstructing cell values."""
