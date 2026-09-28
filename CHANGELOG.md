@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Validate Fail2Ban wall-clock ranges explicitly so malformed timestamps such as
+  `24:00:00` remain rejected on Python 3.14; preserve fractions, calendar-date
+  validation, and naive local timestamps (#101).
+
 - Add global `? Help` with runtime-derived contextual controls, one scrollable
   mini-manual, current CLI guidance and installed version/project links. Preserve
   underlying screen state and start no acquisition or network work (#85).
