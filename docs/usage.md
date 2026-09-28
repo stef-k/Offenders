@@ -141,3 +141,57 @@ return `not-global` without network traffic. Other outcomes are `success`,
 `rate-limited`, `invalid-response`, `rdap-unavailable`, or `unexpected-failure`.
 The library reports transport timeouts and other network failures together as
 `rdap-unavailable`. Neither registration nor PTR data is a reputation assessment.
+
+## CSV export
+
+Press `e Export` from the dashboard to open the last successfully committed
+report. The screen shows its period, generation time, event count, export root,
+and filenames. Press `e` again to write it. Opening and exporting acquire no new
+data; a degraded dashboard exports its last-known-good snapshot with its original
+period and time. Before the first success, export is unavailable. The screen
+captures the report when opened; ordinary dashboard refreshes may continue behind it.
+
+The dashboard filter is **not applied**, including when a query is active.
+IP/ASN/Country mode and focused table do not affect the bundle. Export writes:
+
+- `report.csv`: one metadata row (schema, period, timestamps, counts, text policy).
+- `top-offenders.csv`: ranked Top Offenders, currently limited to 20 IPs, with
+  separate mapped/unmapped/unavailable Country and ASN states.
+- `jail-status.csv`: current jail counters, settings, and space-separated banned
+  IPs; this state is independent of the historical period.
+- `ban-events.csv`: all selected-period events, including duplicates, in report
+  order; no raw log lines.
+
+Files use UTF-8 CSV, headers, and stable columns. Missing optional fields are
+empty, while zero remains zero. Timestamps retain local wall-clock semantics
+without an invented timezone. Formula-like text, including after leading
+whitespace/control characters, gets an apostrophe prefix; numeric fields remain
+numeric. This is a spreadsheet-safe representation, not a byte-for-byte log dump.
+
+Writing runs in the background with `⏳ Exporting…`. After success, the screen
+retains **Export complete** and the exact absolute bundle path on its own line.
+Use `c Copy path` (terminal clipboard, stdout fallback), or `Esc`/`q Close`.
+The path remains until another export or close. Closing during writing stops UI
+delivery; the already running write may still finish under the export root.
+
+The default root is `~/offenders-exports/`. Bundle names use the report generation
+time, for example `offenders-7d-2026_09_28_T192147`. Repeated exports use `-2`,
+`-3`, and so on without overwriting. New bundles and files are owner-only on
+Linux. All four files are staged before atomic publication; handled failures
+clean up staging without presenting a partial completed bundle.
+
+For a fresh report without launching the TUI:
+
+```bash
+offenders export
+offenders export --period 30d
+offenders export --period all
+offenders export --period 7d --output-dir /srv/reports/offenders
+```
+
+The default period is `7d`; choices are `1h`, `24h`, `7d`, `30d`, `all`.
+The CLI acquires exactly one ordinary report, using configured logs, read-only
+Fail2Ban status/settings, and installed local GeoIP data. It does not start
+Registration/RDNS, Coverage, or GeoIP downloads/updates. It prints the absolute
+bundle path on success and exits nonzero with a bounded stderr error on failure.
+`--output-dir` expands `~` and overrides the root; no scheduling is performed.

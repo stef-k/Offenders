@@ -4,6 +4,11 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add shared spreadsheet-safe CSV report bundles through dashboard `e Export`
+  and headless `offenders export`. Retain committed TUI snapshots and copyable
+  result paths; acquire exactly one fresh CLI snapshot. Publish four private
+  files atomically under `~/offenders-exports/` with collision suffixes (#84).
+
 ## 0.2.1 - 2026-09-28
 
 - Move shared background activity into a universal one-row footer with native

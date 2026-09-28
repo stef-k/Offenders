@@ -10,6 +10,14 @@ from offenders_export import SCHEMAS, TEXT_POLICY, export_report, safe_text
 from offenders_geoip import Enrichment, LookupResult
 from test_refresh import report
 
+# Assert the public schema independently so accidental column changes fail tests.
+EXPECTED_HEADERS = {
+    "report.csv": "schema_version,period,generated_at,window_start,total_bans,top_offender_count,jail_count,csv_text_policy",
+    "top-offenders.csv": "rank,bans,ip,country_state,country,asn_state,asn,organization",
+    "jail-status.csv": "jail,currently_failed,total_failed,currently_banned,total_banned,bantime_seconds,findtime_seconds,maxretry,backend,filter,current_banned_ips",
+    "ban-events.csv": "timestamp,jail,ip",
+}
+
 
 class ExportTests(unittest.TestCase):
     """Exercise real files with normalized snapshots and injected write failures."""
@@ -35,9 +43,9 @@ class ExportTests(unittest.TestCase):
                 'offenders-7d-2026_09_27_T121200-3'])
             path = paths[0]
             self.assertTrue(path.is_absolute())
-            self.assertEqual({p.name for p in path.iterdir()}, set(SCHEMAS))
-            for name, header in SCHEMAS.items():
-                self.assertEqual(self.read(path, name)[0], list(header))
+            self.assertEqual({p.name for p in path.iterdir()}, set(EXPECTED_HEADERS))
+            for name, header in EXPECTED_HEADERS.items():
+                self.assertEqual(self.read(path, name)[0], header.split(","))
                 self.assertEqual((path / name).stat().st_mode & 0o777, 0o600)
                 self.assertEqual((path / name).read_bytes(), (paths[1] / name).read_bytes())
             self.assertEqual(path.stat().st_mode & 0o777, 0o700)

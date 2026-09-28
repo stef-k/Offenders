@@ -32,10 +32,10 @@ def safe_text(value):
     """
     if isinstance(value, str):
         # Mixed Unicode whitespace and ASCII control prefixes are also ignored.
-        meaningful = value
-        while meaningful and (meaningful[0].isspace() or ord(meaningful[0]) < 33):
-            meaningful = meaningful[1:]
-        if meaningful.startswith(("=", "+", "-", "@")):
+        index = 0
+        while index < len(value) and (value[index].isspace() or ord(value[index]) < 33):
+            index += 1
+        if value[index:].startswith(("=", "+", "-", "@")):
             return "'" + value
     return value
 

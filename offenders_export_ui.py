@@ -25,7 +25,7 @@ class ExportScreen(Screen):
     def __init__(self, report, query=""):
         super().__init__()
         self.report = report
-        self.query = query
+        self.dashboard_query = query
         self.root = default_root()
         self.path = None
         self._active = False
@@ -34,8 +34,8 @@ class ExportScreen(Screen):
     def compose(self) -> ComposeResult:
         """Show committed metadata and scope before any filesystem write."""
         report = self.report
-        scope = (f'Current dashboard filter "{self.query}" is display-only and will not be applied'
-                 if self.query else "Dashboard filter is not applied")
+        scope = (f'Current dashboard filter "{self.dashboard_query}" is display-only and will not be applied'
+                 if self.dashboard_query else "Dashboard filter is not applied")
         with VerticalScroll(id="export-scroll"):
             yield Static(
                 f"Export report\nPeriod: {report.period}\nGenerated: {report.generated_at.isoformat()}\n"

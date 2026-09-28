@@ -320,3 +320,52 @@ code-guard . --changed-only --json --json-mode compact
 Cover the complete change against its base before completion (for example, use
 the tool's `--base-ref` selector for committed work). Inspect findings and required
 policies; do not add exemptions or alter thresholds merely to pass.
+
+## CSV report export (schema 1)
+
+`offenders_export.py` owns report projection, spreadsheet-safe encoding, schemas,
+private staging, and collision-safe atomic publication. It accepts a `Report`
+and performs no acquisition. `offenders_export_ui.py` captures `_last_report` on
+opening from the dashboard; its Textual thread worker uses the shared activity
+footer and retains a literal absolute result path with clipboard/stdout fallback.
+`offenders_export_cli.py` calls `build_report(period=...)` once and then the same
+exporter. CLI dispatch does not construct or run a Textual application.
+
+The compatibility surface is exactly four UTF-8 header-bearing CSVs, in this
+column order (future incompatible changes require a schema-version decision):
+
+```text
+report.csv:
+  schema_version,period,generated_at,window_start,total_bans,top_offender_count,jail_count,csv_text_policy
+top-offenders.csv:
+  rank,bans,ip,country_state,country,asn_state,asn,organization
+jail-status.csv:
+  jail,currently_failed,total_failed,currently_banned,total_banned,bantime_seconds,findtime_seconds,maxretry,backend,filter,current_banned_ips
+ban-events.csv:
+  timestamp,jail,ip
+```
+
+Metadata has one row, schema version `1`, and text policy
+`apostrophe-prefix-formula-text-v1`. The centralized encoder prefixes a single
+apostrophe when the first character after Unicode whitespace/C0 controls is
+`=`, `+`, `-`, or `@`; normal strings stay unchanged. Numeric values and `None`
+pass directly to `csv`. Every data string uses the encoder. CSV quoting preserves
+commas, quotes, embedded newlines, and UTF-8 independently of formula protection.
+
+Dates use `datetime.isoformat()` and retain local wall-clock semantics. The
+`all` window start is empty. Top Offenders retain rank order and structured
+Country/ASN state/value distinctions; absent legacy enrichment is unavailable,
+not inferred from display placeholders. Jail rows retain daemon order, optional
+absence versus zero, and stored banned-IP order in one space-separated cell.
+Events retain chronological report order, equal-time order, and duplicates.
+Filters, summary modes, last-ten truncation, and raw log lines do not participate.
+
+The root defaults to `~/offenders-exports/`. Names derive from committed generation
+time: `offenders-<period>-YYYY_MM_DD_THHMMSS`, followed by `-2`, `-3`, etc. on
+collision. Only catalog periods are allowed. Staging is a private temporary sibling;
+files are created with mode 0600, bundle directories with 0700. Linux libc
+`renameat2(RENAME_NOREPLACE)` publishes without replacing even an empty directory
+or a concurrent export. Unsupported platforms/filesystems fail closed; there is
+no unsafe rename fallback. Atomic visibility is guaranteed, not power-loss
+persistence. Handled failures clean staging; abrupt termination may leave hidden
+staging. Existing destination permissions are not modified.
