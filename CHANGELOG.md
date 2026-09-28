@@ -4,10 +4,11 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-28
+
 - Package Python-native Registration (RDAP, retaining `w`) and RDNS (PTR) lookups;
   remove separate lookup-tool prerequisites, bound and normalize literal results,
   skip registration traffic for non-global IPs, and reuse shared activity feedback.
-
 - Shared background activity feedback across all screens, including pending report
   periods, GeoIP updates, and immediate lookup status; preserve last-good data and
   explain duplicate requests while work is active.
