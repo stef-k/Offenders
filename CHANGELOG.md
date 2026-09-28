@@ -4,6 +4,9 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Refresh public investigation/diagnostics positioning, discovery metadata, and
+  the current dashboard screenshot using synthetic documentation data (#97).
+
 - Validate Fail2Ban wall-clock ranges explicitly so malformed timestamps such as
   `24:00:00` remain rejected on Python 3.14; preserve fractions, calendar-date
   validation, and naive local timestamps (#101).
