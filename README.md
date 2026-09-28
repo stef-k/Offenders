@@ -28,6 +28,8 @@ root; validation also uses temporary local sample files.
 ## Quick start
 
 Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban >=1.0.2**.
+Ubuntu 26.04 and Debian 13 are not yet claimed; Ubuntu 22.04's distro stack is
+below both runtime floors. See the [bounded qualification results](https://stef-k.github.io/Offenders/qualification-98.html).
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
 be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 

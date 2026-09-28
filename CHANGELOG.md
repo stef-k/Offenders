@@ -4,6 +4,11 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Record bounded Ubuntu/Debian qualification and Ubuntu 22.04 feasibility (#98).
+  Retain Ubuntu 24.04 as the supported baseline and both existing runtime floors;
+  defer the Ubuntu 26.04 parser incompatibility and leave Debian 13 unclaimed
+  pending successful live host-integration evidence.
+
 - Add global `? Help` with runtime-derived contextual controls, one scrollable
   mini-manual, current CLI guidance and installed version/project links. Preserve
   underlying screen state and start no acquisition or network work (#85).
