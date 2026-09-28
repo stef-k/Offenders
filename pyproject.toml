@@ -24,6 +24,7 @@ dependencies = ["textual>=8.2.8,<9", "maxminddb>=3.1,<4", "dnspython>=2.8,<3", "
 [project.urls]
 Source = "https://github.com/stef-k/Offenders"
 Issues = "https://github.com/stef-k/Offenders/issues"
+PyPI = "https://pypi.org/project/offenders/"
 
 [project.scripts]
 offenders = "offenders:main"
