@@ -26,3 +26,19 @@ GeoIP data and automatic policy are user-owned XDG state.
 Registration/RDNS dependencies are installed with Offenders. A missing Python
 import indicates an incomplete installation: reinstall the package in its pipx
 environment. A temporary request failure does not disable either action.
+
+## CSV export fails
+
+Check that the destination root (default `~/offenders-exports/`) is writable by
+the account running Offenders, parent directories are traversable, and the volume
+has free space. The CLI can choose a writable root with `--output-dir`; existing
+root permissions are preserved. Avoid running as root merely to export.
+
+Exports require Linux atomic no-replace rename support in libc, the kernel, and
+the destination filesystem. Unsupported filesystems fail rather than overwrite
+existing exports. Try a local Linux filesystem if publication is unsupported.
+A handled write/publication failure removes temporary staging; completed exports
+remain untouched. An abrupt process termination may leave a hidden
+`.offenders-export-*` staging directory, which is not a completed export.
+The TUI retains the committed report on failure, so it can be retried. If no
+report has succeeded yet, resolve the report acquisition error first.

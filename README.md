@@ -11,6 +11,8 @@ run on-demand Registration/RDNS lookups or a manual Coverage analysis for review
 Earlier dashboard illustration with synthetic documentation addresses and no GeoIP
 databases; the current application uses the Registration label and shared activity footer.
 
+- Export a committed report with `e`, or acquire one fresh CSV bundle with
+  `offenders export --period 30d` (see [Usage](docs/usage.md#csv-export)).
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
 - Review Coverage evidence and explicitly validate copy-only filter candidates.
