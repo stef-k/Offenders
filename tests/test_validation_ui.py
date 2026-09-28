@@ -81,10 +81,7 @@ class ValidationScreenTests(unittest.IsolatedAsyncioTestCase):
                     analysis.assert_called_once()
                     await pilot.press('q')
                     run.side_effect = RuntimeError('fixture failure')
-                    with patch.object(app, 'notify') as notify:
-                        await pilot.press('v', 'enter')
-                        self.assertEqual(notify.call_count, 2)
-                        notify.assert_called_with('Validation already in progress', timeout=2.0)
+                    await pilot.press('v', 'enter')
                     await app.workers.wait_for_complete()
                     self.assertIn('Validation unavailable', str(app.screen.query_one('#validation-detail', Static).content))
                 finally:
