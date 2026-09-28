@@ -15,6 +15,7 @@ from textual.worker import Worker, get_current_worker
 from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
+from offenders_activity import ActivityStatus, ActivityWorkers
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
 from offenders_recommendations_ui import RecommendationsScreen
@@ -86,6 +87,7 @@ class OffendersApp(App):
     def __init__(self) -> None:
         """Track scheduled work and actual thread lifetime separately on cancellation."""
         super().__init__()
+        self._workers = ActivityWorkers(self)
         self._refresh_worker: Optional[Worker] = None
         self._build_lock = threading.Lock()
         self._active_period = DEFAULT_PERIOD
@@ -95,6 +97,7 @@ class OffendersApp(App):
         self.geoip_status = GeoIPStatus(self.refresh_report)
 
     def compose(self) -> ComposeResult:
+        yield ActivityStatus()
         yield Header()
 
         with Container(id="body"):
@@ -117,6 +120,7 @@ class OffendersApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.screen_change_signal.subscribe(self, self.workers.show_on_screen)
         self.title = "Fail2Ban Top Offenders"
         self.sub_title = "Updated at: —"
 
@@ -241,7 +245,10 @@ class OffendersApp(App):
             if manual:
                 self.notify("Refresh already in progress", timeout=2.0)
             return
-        self._refresh_worker = self._collect_report(period or self._active_period)
+        target = period or self._active_period
+        self._refresh_worker = self._collect_report(target)
+        self.workers.label(self._refresh_worker,
+                           f"Loading {target}…" if target != self._active_period else "Refreshing…")
 
     @work(thread=True)
     def _collect_report(self, period: str) -> None:

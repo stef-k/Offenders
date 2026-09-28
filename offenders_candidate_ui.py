@@ -82,7 +82,7 @@ class CustomCandidateScreen(Screen):
         self.query_one("#candidate-detail", Static).update(Text("Generating and validating candidate…"))
         self._generate()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Generating and validating candidate…")
     def _generate(self) -> None:
         """Backend retains responsibility for bounded command completion and cleanup."""
         worker, app = get_current_worker(), self.app

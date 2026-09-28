@@ -100,7 +100,7 @@ class ValidationScreen(Screen):
         self.query_one("#validation-detail", Static).update(Text(f"Validating… {target.name} / {target.filter_stem}"))
         self._validate(target)
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Validating…")
     def _validate(self, target) -> None:
         """Let backend cleanup finish even when this worker's delivery is cancelled."""
         worker, app = get_current_worker(), self.app

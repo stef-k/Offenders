@@ -59,6 +59,7 @@ class CommandOutputModal(ModalScreen[None]):
         self.ip = ipaddress.ip_address(ip).compressed
         self.tool = tool
         self._output_text = ""
+        self.working_text = "Running WHOIS…" if tool == "whois" else "Resolving PTR…"
 
     def compose(self) -> ComposeResult:
         """Show the chosen IP while its command is running."""
@@ -67,7 +68,9 @@ class CommandOutputModal(ModalScreen[None]):
 
     def on_mount(self) -> None:
         """Start only after the output widget is mounted."""
-        self._run()
+        self.query_one("#cmd-out", RichLog).write(Text(self.working_text))
+        worker = self._run()
+        self.app.workers.label(worker, self.working_text)
 
     @work(thread=True)
     def _run(self) -> None:
@@ -82,7 +85,7 @@ class CommandOutputModal(ModalScreen[None]):
         if not self.is_mounted or self not in self.app.screen_stack:
             return
         self._output_text = output
-        self.query_one("#cmd-out", RichLog).write(Text(output))
+        self.query_one("#cmd-out", RichLog).clear().write(Text(output))
 
     def action_copy_output(self) -> None:
         """Preserve terminal clipboard support and the stdout fallback."""
@@ -155,7 +158,7 @@ class IPInspectorScreen(Screen[None]):
         self._request += 1
         self._project(report, self._request)
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Loading IP details…")
     def _project(self, report: Report, request: int) -> None:
         """MMDB lookup is local but must never block the Textual event loop."""
         worker = get_current_worker()

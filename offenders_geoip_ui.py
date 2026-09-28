@@ -99,7 +99,7 @@ class GeoIPStatus(Static):
         """Read local health and run the sole mount-triggered policy check."""
         self._startup()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Checking GeoIP…")
     def _startup(self):
         """Disabled policy reads are side-effect free, including first launch."""
         self.app.call_from_thread(self.set_health, geoip.refresh())
@@ -135,7 +135,7 @@ class GeoIPStatus(Static):
         if isinstance(screen, GeoIPScreen):
             screen.render_details()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Updating GeoIP…")
     def update_now(self):
         """Each explicit action uses the shared nonblocking writer lock."""
         self._perform_update(automatic=False)
@@ -144,7 +144,9 @@ class GeoIPStatus(Static):
         """Delegate locking, due policy, download and activation to offenders_geoip_update."""
         try:
             result = update(self.root, automatic=automatic)
-            if result is not None:
+            if result is None:
+                self.app.call_from_thread(self._feedback, "GeoIP check complete; no update needed.")
+            else:
                 health = geoip.refresh()
                 self.app.call_from_thread(self._activated, health, result)
         except (UpdateError, OSError) as error:
@@ -162,7 +164,7 @@ class GeoIPStatus(Static):
         self._feedback(f"Activated {bounded(result)}")
         self.refresh_report()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Saving GeoIP policy…")
     def toggle_auto(self):
         """Explicit policy changes persist without scheduling network work."""
         try:
@@ -200,8 +202,20 @@ class GeoIPScreen(ModalScreen):
 
     def action_update_now(self):
         """An explicit keypress consents to the rootless update."""
-        self.status.update_now()
+        if not self._already_working():
+            self.status._feedback("Updating GeoIP…")
+            self.status.update_now()
 
     def action_toggle_auto(self):
         """Persist the operator's explicit automatic-update preference."""
-        self.status.toggle_auto()
+        if not self._already_working():
+            self.status._feedback("Saving GeoIP policy…")
+            self.status.toggle_auto()
+
+    def _already_working(self):
+        """Reject duplicate lifecycle keys before spawning another UI worker."""
+        if any(worker.node is self.status and not worker.is_finished
+               and not worker.is_cancelled for worker in self.app.workers):
+            self.app.notify("GeoIP operation already in progress", timeout=2.0)
+            return True
+        return False

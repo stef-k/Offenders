@@ -158,7 +158,7 @@ class RecommendationsScreen(Screen):
         table.focus()
         self._analyze()
 
-    @work(thread=True)
+    @work(thread=True, name="activity:Analyzing coverage…")
     def _analyze(self) -> None:
         """Run all acquisition off-loop and discard cancelled delivery."""
         worker = get_current_worker()
