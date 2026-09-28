@@ -25,7 +25,7 @@ visible Top IP total. Last bans displays the newest ten events.
 Reports refresh at startup, every 30 seconds, and on request. Only one refresh
 runs at a time; a manual refresh or period request while busy reports that refresh
 is in progress and must be retried afterward.
-A shared status line shows `Refreshing…` or a pending target such as `Loading 30d…`
+The shared footer shows `⏳ Refreshing…` or a pending target such as `⏳ Loading 30d…`
 while the last successful tables remain visible. A period change commits only on success. Failure retains last-known-good tables,
 period, and timestamp with a degraded message; before the first success, data is
 explicitly unavailable. A successful recovery replaces the data and clears the
