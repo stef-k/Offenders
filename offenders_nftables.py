@@ -104,6 +104,8 @@ def classify_nft_action(properties: Mapping[str, str], *, family: str = 'inet4')
     facts['actionban'] = raw.replace('<ip>', 'OFFENDERS_IP')
     command = resolve_action_property(facts, 'actionban', family=family)
     command = command.replace(r'\{', '{').replace(r'\}', '}')
+    if '\n' in command or '\r' in command:
+        return None
     values = {key: resolve_action_property(properties, key, family=family) for key in (
         'table_family', 'table', 'chain', 'chain_type', 'chain_hook', 'addr_set', 'blocktype')}
     if not _safe_table(values['table_family'], values['table']) or any(

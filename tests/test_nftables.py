@@ -42,6 +42,11 @@ class NftablesTests(unittest.TestCase):
         data['nftables'][-2]['rule']['expr'][-1] = {'drop': None}
         drop = nft.classify_nft_action({**PROPERTIES, 'blocktype': 'drop'})
         self.assertEqual(self.check(data, drop).outcome, 'confirmed')
+        data = copy.deepcopy(self.data)
+        data['nftables'][-2]['rule']['expr'][0] = {
+            'match': {'op': '==', 'left': {'meta': {'key': 'l4proto'}}, 'right': {'set': [6, 17]}}}
+        data['nftables'][-2]['rule']['expr'].insert(2, {'counter': {'packets': 0, 'bytes': 0}})
+        self.assertEqual(self.check(data).outcome, 'confirmed')
 
     def test_absent_objects_and_member(self):
         """Successful complete snapshots can establish specific absent facts."""
@@ -93,6 +98,9 @@ class NftablesTests(unittest.TestCase):
         data = copy.deepcopy(self.data)
         data['nftables'][-2]['rule']['chain'] = 'unrelated'
         self.assertEqual(self.check(data).reason, 'rule-reference-absent')
+        data = copy.deepcopy(self.data)
+        data['nftables'][-2]['rule']['expr'] = [{'vmap': {'key': {'meta': {'key': 'nfproto'}}, 'data': '@banned'}}]
+        self.assertEqual(self.check(data).outcome, 'unverifiable')
 
     def test_unfamiliar_elements_are_unverifiable(self):
         """Prefixes, intervals and timeout wrappers are outside simple-host support."""
@@ -124,10 +132,12 @@ class NftablesTests(unittest.TestCase):
         effective = 'nft add element inet evidence banned { <ip> }'
         self.assertIsNotNone(nft.classify_nft_action({**PROPERTIES, 'actionban': effective}))
         for changes in [{'actionban': effective + '; echo extra'},
+                        {'actionban': effective.replace('nft add', 'nft\nadd')},
                         {'actionban': 'wrapper ' + effective}, {'nftables': '/tmp/nft'},
                         {'chain_type': 'nat'}, {'blocktype': 'redirect to 2222'}]:
             with self.subTest(changes=changes):
                 self.assertIsNone(nft.classify_nft_action({**PROPERTIES, **changes}))
+        self.assertEqual(nft.classify_nft_action({**PROPERTIES, 'blocktype': 'reject with icmpx type host-unreachable'}).verdict, 'reject')
         with self.assertRaises(f2b.Fail2BanParseError):
             nft.classify_nft_action({**PROPERTIES, 'table': '<table>'})
 
@@ -156,6 +166,16 @@ class NftablesTests(unittest.TestCase):
                 snapshot = next(iter(nft.read_nft_tables((action,)).values()))
                 self.assertEqual(snapshot.reason, 'unsafe-identifier')
             runner.assert_not_called()
+
+    def test_table_count_limit_prevents_partial_acquisition(self):
+        """A too-large request cannot silently verify only a truncated subset."""
+        from dataclasses import replace
+        actions = [replace(self.action, table=f'table-{index}') for index in range(nft.NFT_TABLE_LIMIT + 1)]
+        with patch.object(nft, 'run_host_command') as runner:
+            snapshots = nft.read_nft_tables(actions)
+        runner.assert_not_called()
+        self.assertEqual(len(snapshots), len(actions))
+        self.assertTrue(all(snapshot.reason == 'evidence-limit' for snapshot in snapshots.values()))
 
     def test_command_failures_and_output_bounds_are_unverifiable(self):
         """Permission/time/output failures retain no raw stdout and imply no absence."""

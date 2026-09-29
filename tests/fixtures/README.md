@@ -63,13 +63,18 @@ schema. All addresses are RFC documentation addresses. It is not a production
 ruleset or a capture from the supported Ubuntu 24.04 host baseline.
 
 The parser subset follows the installed `libnftables-json(5)` schema and upstream
-[nftables JSON documentation](https://netfilter.org/projects/nftables/manpage.html#lbBO).
+[nftables JSON entrypoint](https://netfilter.org/projects/nftables/manpage.html).
 The action template and static properties were compared using upstream Fail2Ban
 [nftables.conf 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/nftables.conf)
 and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/nftables.conf);
 their relevant semantics are identical. Inline mutations cover absent objects,
 unsafe/custom actions, malformed/oversized evidence, and unsupported forms without
 adding a fixture for every failure. Ordinary tests never run nft or require root.
+
+Disposable namespace qualification also confirmed a live IPv6 allports source-set
+rule with a zero counter and terminal drop, and a missing IPv4 host member. The
+installed nftables 1.0.9 tool emitted incomplete JSON for a dormant table; that
+read is conservatively unverifiable, without salvaging a partial snapshot.
 
 ## Pattern recognition examples
 
