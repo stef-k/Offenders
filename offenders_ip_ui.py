@@ -12,6 +12,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, RichLog, Static
 from textual.worker import get_current_worker
 
+from offenders_selection import current_row_key, event_row_key
 from offenders_activity import OffendersFooter
 from offenders_help_content import HELP_BINDING
 from offenders_lookup import lookup_output
@@ -49,18 +50,26 @@ class CommandOutputModal(ModalScreen[None]):
         worker = get_current_worker()
         output = lookup_output(self.ip, self.tool)
         if not worker.is_cancelled:
-            self.app.call_from_thread(self._render_output, output)
+            self.app.call_from_thread(self._render_output, output, worker)
 
-    def _render_output(self, output: str) -> None:
+    def _render_output(self, output: str, worker=None) -> None:
         """Store precisely the bounded text shown and copied."""
-        if not self.is_mounted or self not in self.app.screen_stack:
+        if (not self.is_mounted or self not in self.app.screen_stack
+                or (worker is not None and worker.is_cancelled)):
             return
         self._output_text = output
         self.query_one("#cmd-out", RichLog).clear().write(Text(output))
+        self.refresh_bindings()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Offer output copy only after a nonempty result has been displayed."""
+        if action == "copy_output":
+            return bool(self._output_text and self.is_mounted and self in self.app.screen_stack)
+        return True
 
     def action_copy_output(self) -> None:
         """Preserve terminal clipboard support and the stdout fallback."""
-        if not self._output_text:
+        if not self._output_text or not self.is_mounted or self not in self.app.screen_stack:
             return
         try:
             self.app.copy_to_clipboard(self._output_text)
@@ -144,7 +153,7 @@ class IPInspectorScreen(Screen[None]):
         self.projection = projection
         self.query_one("#ip-details", Static).update(ip_details(projection))
         table = self.query_one("#ip-jails", DataTable)
-        selected = table.coordinate_to_cell_key(table.cursor_coordinate).row_key if table.row_count else None
+        selected = current_row_key(table)
         cursor, x, y = table.cursor_coordinate, table.scroll_x, table.scroll_y
         table.clear()
         counts = dict(projection.jail_counts)
@@ -169,8 +178,8 @@ class IPInspectorScreen(Screen[None]):
     def select_jail(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
         """Push a historical or live jail without acquiring any new facts."""
         event.stop()
-        key = event.row_key if isinstance(event, DataTable.RowSelected) else event.cell_key.row_key
-        if key.value is not None:
+        key = event_row_key(event)
+        if key is not None and key.value is not None:
             self.open_jail(key.value)
 
     def action_registration(self) -> None:

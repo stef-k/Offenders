@@ -6,6 +6,7 @@ from textual.widgets import DataTable, Input, Static
 from offenders_aggregate import AggregateSnapshot, aggregate_report, filter_aggregates
 from offenders_filter import filter_rows
 from offenders_geoip import geoip
+from offenders_selection import current_row_key
 from offenders_report import Report
 
 
@@ -54,7 +55,7 @@ class DashboardSummary(Static):
 
     def _complete(self, report: Report, snapshot: AggregateSnapshot | None) -> None:
         """An old completion cannot overwrite the current report or its IP view."""
-        if report is not self.report:
+        if report is not self.report or not self.is_mounted:
             return
         self.snapshot = snapshot
         self.error = snapshot is None
@@ -64,12 +65,13 @@ class DashboardSummary(Static):
     def copyable(self) -> bool:
         """Only real aggregate rows support normal row/cell copy."""
         table = self.screen.query_one("#offenders", DataTable)
-        return bool(table.row_count and table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value)
+        key = current_row_key(table)
+        return key is not None and key.value is not None
 
     def _render_table(self) -> None:
         """Replace summary columns/rows while preserving a visible bucket identity."""
         table = self.screen.query_one("#offenders", DataTable)
-        selected = table.coordinate_to_cell_key(table.cursor_coordinate).row_key if table.row_count else None
+        selected = current_row_key(table)
         query = self.screen.query_one("#filter", Input).value
         table.clear(columns=True)
         if self.mode == "IP":

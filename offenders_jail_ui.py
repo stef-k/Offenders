@@ -9,6 +9,7 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import DataTable, Static
 
+from offenders_selection import event_row_key
 from offenders_activity import OffendersFooter
 from offenders_report import Report
 
@@ -115,8 +116,9 @@ class JailDetailScreen(Screen[None]):
     def select_ip(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
         """Open the report's normalized address without changing history context."""
         event.stop()
-        key = event.row_key if isinstance(event, DataTable.RowSelected) else event.cell_key.row_key
-        self.open_ip(str(event.data_table.get_row(key)[2]))
+        key = event_row_key(event)
+        if key is not None:
+            self.open_ip(str(event.data_table.get_row(key)[2]))
 
     def update_report(self, report: Report) -> None:
         """Refresh literal status in place without changing focus or scroll."""
