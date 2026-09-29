@@ -76,6 +76,23 @@ rule with a zero counter and terminal drop, and a missing IPv4 host member. The
 installed nftables 1.0.9 tool emitted incomplete JSON for a dormant table; that
 read is conservatively unverifiable, without salvaging a partial snapshot.
 
+## Iptables compatibility save output
+
+`tests/test_iptables.py` uses small synthetic IPv4/IPv6 save snapshots with RFC
+documentation addresses, chain declarations, stock multiport parent jumps,
+source-only REJECT/DROP rules and RETURN tails. An unrelated `*nat` section
+proves that only `*filter` facts qualify. These are not production-host captures.
+
+The stock action template, locking flag, chain/name properties and IPv6 overrides
+were compared in upstream Fail2Ban
+[iptables.conf 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/iptables.conf)
+and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/iptables.conf);
+the relevant definitions are identical. The structural save format and terminal
+REJECT replies follow the iptables 1.8.10 `iptables-save(8)` and
+`iptables-extensions(8)` interfaces. Inline cases cover malformed framing,
+tokenization, absent direct facts, unsupported rules and exact read argv without
+a backend-executable-by-parser-case matrix. Ordinary tests run no firewall tools.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based

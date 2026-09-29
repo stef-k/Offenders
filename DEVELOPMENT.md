@@ -292,6 +292,39 @@ facts: later integration must establish namespace identity and opening/closing
 ban/action stability before publishing confirmed/missing outcomes. There is no
 dashboard, ordinary Report, export, or full race-bracket caller in this child.
 
+### Iptables compatibility direct evidence
+
+`offenders_iptables.classify_iptables_action` consumes the foundation's normalized
+properties and requires the stock effective
+`<iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>` shape. It resolves `name`,
+parent `chain`, `blocktype` and the IPv4/IPv6 `iptables` property, including the
+stock `lockingopt` reference. Only bare `iptables`, `iptables-nft`,
+`iptables-legacy` and their `ip6tables` equivalents, optionally followed by `-w`,
+qualify. Custom executable paths, wrappers, compound commands, arbitrary targets
+and extra executable flags are unsupported. Missing, unsafe or unresolved
+properties raise `Fail2BanParseError`; supported targets are DROP and REJECT,
+including finite family-specific REJECT replies.
+
+`read_iptables_saves` reads each selected compatibility view once through
+`sudo -n <matching-binary>-save`, with **no arguments** and an eight-second
+deadline. Iptables-nft uses its matching save interface rather than native nft
+object-name guesses. No action program, mutation, restore or fallback command
+is run. No-argument save avoids requesting that a missing table module be loaded.
+The 4 MiB parser/retention bound applies after the existing runner captures stdout;
+excess evidence, failed reads and malformed framing remain unverifiable.
+
+`parse_iptables_save` reads only `*filter` chain declarations and stock structural
+rule facts with `shlex.split`; other table rule bodies cannot satisfy a check.
+Snapshots retain normalized chains, direct jumps, exact host sources and targets,
+without raw rules or command diagnostics. `verify_iptables_ban` requires the
+expected Fail2Ban chain, configured parent chain, a direct parent jump and an
+exact source-only host rule with the configured terminal DROP/REJECT target.
+Bare hosts and /32 or /128 normalize identically; networks, unrelated chains and
+custom jump paths cannot confirm a ban. Unfamiliar relevant rule forms stay
+unverifiable, and no recursive chain traversal or packet-path evaluation occurs.
+Later integration owns namespace and opening/closing ban/action stability gates;
+this backend has no UI, ordinary Report, export or full race-bracket caller.
+
 ## Packaging and distribution
 
 `pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static
