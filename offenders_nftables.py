@@ -221,7 +221,7 @@ def _stock_scope_match(match: dict) -> bool:
 
 
 def _table_objects(data: object, family: str, table: str) -> dict[str, list[dict]]:
-    """Validate the list envelope and scoped identities before proving absence."""
+    """Require one scoped table identity before proving contained objects absent."""
     if not isinstance(data, dict) or set(data) != {'nftables'} or not isinstance(data['nftables'], list):
         raise ValueError('Invalid nft list envelope')
     objects = {key: [] for key in ('table', 'set', 'chain', 'rule')}
@@ -248,6 +248,8 @@ def _table_objects(data: object, family: str, table: str) -> dict[str, list[dict
             raise ValueError('Duplicate nft object')
         identities.add(identity)
         objects[kind].append(value)
+    if len(objects['table']) != 1:
+        raise ValueError('Expected one scoped nft table')
     return objects
 
 
@@ -260,14 +262,14 @@ def parse_nft_table(output: str, family: str, table: str) -> NftSnapshot:
     try:
         data = json.loads(output, object_pairs_hook=_unique_object)
         objects = _table_objects(data, family, table)
-        flags = objects['table'][0].get('flags', []) if objects['table'] else []
+        flags = objects['table'][0].get('flags', [])
         if not isinstance(flags, list) or any(flag not in ('dormant', 'owner', 'persist') for flag in flags):
             raise ValueError('Unknown nft table flags')
         sets = tuple(_parse_set(value) for value in objects['set'])
         chains = tuple(NftChain(value['name'], value.get('type'), value.get('hook'),
                                type(value.get('prio')) is int) for value in objects['chain'])
         rules = tuple(_parse_rule(value) for value in objects['rule'])
-        return NftSnapshot(family, table, bool(objects['table']), 'dormant' in flags, sets, chains, rules)
+        return NftSnapshot(family, table, True, 'dormant' in flags, sets, chains, rules)
     except (ValueError, TypeError, KeyError, RecursionError):
         return NftSnapshot(family, table, reason='unrecognized-output')
 

@@ -49,15 +49,17 @@ class NftablesTests(unittest.TestCase):
         self.assertEqual(self.check(data).outcome, 'confirmed')
 
     def test_absent_objects_and_member(self):
-        """Successful complete snapshots can establish specific absent facts."""
-        for kind, reason in [('table', 'table-absent'), ('set', 'set-absent'),
-                             ('chain', 'chain-absent')]:
+        """Only snapshots with table identity can establish absent objects/members."""
+        for kind, outcome, reason in [('table', 'unverifiable', 'unrecognized-output'),
+                                      ('set', 'missing', 'set-absent'),
+                                      ('chain', 'missing', 'chain-absent')]:
             data = copy.deepcopy(self.data)
             data['nftables'] = [entry for entry in data['nftables'] if kind not in entry]
             with self.subTest(kind=kind):
                 self.assertEqual(self.check(data).reason, reason)
-                self.assertEqual(self.check(data).outcome, 'missing')
+                self.assertEqual(self.check(data).outcome, outcome)
         self.assertEqual(self.check(ip='192.0.2.99').reason, 'ban-entry-absent')
+        self.assertEqual(self.check(ip='192.0.2.99').outcome, 'missing')
 
     def test_dormant_table_and_incompatible_set(self):
         """Dormancy and wrong address type cannot produce confirmation."""
