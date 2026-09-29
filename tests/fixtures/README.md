@@ -117,9 +117,16 @@ checks; rule content and column spacing are otherwise unchanged.
 
 Qualification used a non-root disposable user with narrowly enumerated sudo
 grants. `sudo -n ufw status numbered` produced C/English numbered headers, rows
-and comments under the container's default POSIX locale. UFW's source in the
+and comments under the container's default POSIX locale. The product's actual
+bounded runner qualified both live save reads and confirmed all five captured
+rule scopes using installed Fail2Ban 1.0.2 ActionReader runtime properties.
+Default, `kill-mode=ss`, and a custom `kill` property were classified without
+executing an action; both termination cases remained explicitly unverified.
+An absent documentation host produced missing evidence. UFW's source in the
 installed package (`backend_iptables.py`, `get_status`) confirms this frontend
-projection, including numeric destinations and application names. Live rules
+projection, including numeric destinations and application names; its
+`applications.py` establishes the 64-character, non-port profile identity bound.
+Live rules
 use exact `ufw-user-input`/`ufw6-user-input` chains and escaped quoted
 `dapp_Evidence%20App` markers. The user-facing comment appears in status only.
 This qualifies the baseline package's output contract and ordinary sudo path;

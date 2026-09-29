@@ -329,8 +329,11 @@ this backend has no UI, ordinary Report, export or full race-bracket caller.
 
 `offenders_ufw.classify_ufw_action` requires the complete stock Fail2Ban
 1.0.2/1.1.0 conditional UFW rule path, with `prepend`, `deny`/`reject`, a numeric
-destination (or `any`), and an empty or bounded application-profile identity.
+destination (or `any`), and an empty or bounded application-profile identity
+(up to 64 characters, including numeric-leading names but excluding bare ports).
 It consumes foundation runtime properties without executing the action text.
+The resolved rule lines retain stock quoting; shell token equality alone cannot
+establish compatibility when a literal field becomes an unquoted operator.
 Comments may be empty, bounded static literals, or the stock
 `by Fail2Ban after <failures> attempts against <name>` template. Only that
 template permits a dynamic field: one to ten ASCII decimal count digits, with
