@@ -1,0 +1,8 @@
+Added user rules (see 'ufw status' for running firewall):
+ufw deny from 192.0.2.221 to 198.51.100.10 comment 'by Fail2Ban after 3 attempts against guard'
+ufw deny from 192.0.2.220 to any app 198.51.100.10 comment 'by Fail2Ban after 3 attempts against guard'
+ufw reject from 192.0.2.3 to 198.51.100.0/24 comment 'static evidence'
+ufw deny from 192.0.2.2 to any app 'Evidence App' comment 'by Fail2Ban after 42 attempts against guard'
+ufw reject from 192.0.2.1 comment 'by Fail2Ban after 3 attempts against guard'
+ufw deny from 2001:db8::2
+ufw deny from 2001:db8::1 to 2001:db8::10 app 'Evidence App' comment 'static evidence'

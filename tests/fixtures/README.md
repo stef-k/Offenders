@@ -101,6 +101,67 @@ The no-argument IPv4 legacy save read could not be qualified in this environment
 `/proc/net/ip_tables_names` was permission denied. This is local parser evidence,
 not supported-host, live sudo or namespace/race-bracket qualification.
 
+## UFW status and live save output
+
+`ufw-status.txt`, `ufw-added.txt`, `ufw-v4.save` and `ufw-v6.save` are captures from a
+disposable Ubuntu 24.04 container using UFW `0.36.2-6` and iptables
+`1.8.10-3ubuntu2` (the system nft compatibility view). Setup enabled UFW and added
+only documentation-address incoming rules: IPv4 REJECT, IPv4 subnet destination,
+IPv4 application DENY, IPv6 DENY, and IPv6 application DENY with an exact numeric
+destination. `Evidence App` is a disposable profile with TCP 22/2222 and UDP 53.
+The profile spans multiple live rules but one normalized added command. A second
+profile, literally named `198.51.100.10`, and a destination rule for that address
+exercise the permanent application/destination ambiguity regression. An unrelated
+destination-only live rule for the application's source is also captured.
+Capture commands were precisely `ufw status`, `ufw show added`, `iptables-save` and
+`ip6tables-save`, with no save arguments. No production ruleset was accessed.
+Padding at line ends and final blank lines were removed for Git diff checks;
+rule content and column spacing are otherwise unchanged.
+
+Qualification used a non-root disposable user with narrowly enumerated sudo
+grants. `sudo -n ufw status` and `sudo -n ufw show added` produced C/English
+headers under the container's default POSIX locale. The managed projection
+distinguishes `to 198.51.100.10` from `to any app 198.51.100.10` explicitly.
+The product's actual bounded runner qualifies active, managed and live reads
+using installed Fail2Ban 1.0.2 ActionReader runtime properties.
+Default, `kill-mode=ss`, and a custom `kill` property were classified without
+executing an action; both termination cases remained explicitly unverified.
+An absent documentation host produced missing evidence. UFW's source in the
+installed package (`frontend.py`, `show_added`; `parser.py`,
+`UFWCommandRule.get_command`) confirms the normalized projection. Its formatter
+canonically omits exactly `to any` when a source is present and destination
+port/application scope is empty. The parser accepts only that qualified omission
+with at most a comment; it does not infer destination from an application token.
+The package's
+`applications.py` establishes the 64-character, non-port profile identity bound.
+Legal IP-looking profile names remain application identities. Live rules
+use exact `ufw-user-input`/`ufw6-user-input` chains and escaped quoted
+`dapp_Evidence%20App` markers. User comments are matched in the managed projection,
+not in the live save layer.
+This qualifies the baseline package's output contract and ordinary sudo path;
+it does not claim all user locales become English, a full live systemd host,
+the integration race bracket, or end-to-end packet acceptance. Localized status
+is deliberately unverifiable. The product adds no locale-forcing capability.
+
+The stock action definition was compared through GitHub's API at upstream
+[Fail2Ban 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/ufw.conf)
+and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/ufw.conf);
+the files are identical. Fixture setup is external to the backend. Ordinary
+tests use these captures and small inline mutations; they never invoke UFW,
+save tools, connection termination or mutation commands. The parser does not
+use human `ufw show raw` output.
+
+The retained disposable-baseline safety counterexample is:
+UFW accepted `[198.51.100.10]` as an application profile and printed its
+source-specific application DENY row with `198.51.100.10` in the To column.
+A separately inserted live destination-only DROP rule for the same source then
+caused the original status-row verifier to return a false confirmation for a
+destination action. `test_numeric_application_row_cannot_prove_a_destination_rule`
+permanently checks that the explicit `show added` app clause cannot satisfy the
+destination-only action despite that unrelated live rule. It also confirms both
+legitimate identities, and rejects the reverse destination-to-application match
+even with unrelated live application evidence. Status rows are never authoritative.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based
