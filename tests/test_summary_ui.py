@@ -127,8 +127,8 @@ class SummaryTests(unittest.IsolatedAsyncioTestCase):
                     completed = asyncio.Event()
                     original_complete = app.summary_view._complete
 
-                    def complete(report, snapshot):
-                        original_complete(report, snapshot)
+                    def complete(report, snapshot, worker=None):
+                        original_complete(report, snapshot, worker)
                         if report is newest:
                             completed.set()
 

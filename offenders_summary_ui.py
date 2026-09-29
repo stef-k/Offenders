@@ -51,11 +51,12 @@ class DashboardSummary(Static):
         except Exception:
             snapshot = None
         if not worker.is_cancelled:
-            self.app.call_from_thread(self._complete, report, snapshot)
+            self.app.call_from_thread(self._complete, report, snapshot, worker)
 
-    def _complete(self, report: Report, snapshot: AggregateSnapshot | None) -> None:
+    def _complete(self, report: Report, snapshot: AggregateSnapshot | None, worker=None) -> None:
         """An old completion cannot overwrite the current report or its IP view."""
-        if report is not self.report or not self.is_mounted:
+        if (report is not self.report or not self.is_mounted
+                or (worker is not None and worker.is_cancelled)):
             return
         self.snapshot = snapshot
         self.error = snapshot is None

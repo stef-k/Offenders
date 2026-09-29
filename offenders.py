@@ -192,11 +192,12 @@ class OffendersApp(App):
                          lambda result: self._restore_ip_focus(table, ip))
 
     def _restore_ip_focus(self, table: DataTable, ip: str) -> None:
-        """Find the original IP after reordering, or select a valid fallback row."""
+        """Restore a surviving IP identity; otherwise keep the new table selection."""
         column = 1 if table.id == "offenders" else 3
         row = next((i for i in range(table.row_count)
-                    if str(table.get_row_at(i)[column]) == ip), 0)
-        table.move_cursor(row=row)
+                    if str(table.get_row_at(i)[column]) == ip), None)
+        if row is not None:
+            table.move_cursor(row=row)
         table.focus()
 
     def _restore_jail_focus(self, jail: str) -> None:

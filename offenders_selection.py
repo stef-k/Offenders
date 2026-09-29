@@ -1,6 +1,6 @@
 """Small DataTable selection checks shared by actions and queued events."""
 from textual.widgets import DataTable
-from textual.widgets._data_table import RowKey
+from textual.widgets.data_table import RowKey
 
 
 def current_row_key(table: DataTable) -> RowKey | None:
@@ -8,10 +8,14 @@ def current_row_key(table: DataTable) -> RowKey | None:
     row = table.cursor_row
     if not 0 <= row < table.row_count or not table.columns:
         return None
+    if table.cursor_type == "cell" and not 0 <= table.cursor_column < len(table.columns):
+        return None
     return table.coordinate_to_cell_key((row, 0)).row_key
 
 
-def event_row_key(event) -> RowKey | None:
+def event_row_key(
+    event: DataTable.RowHighlighted | DataTable.RowSelected | DataTable.CellSelected,
+) -> RowKey | None:
     """Accept only an event still identifying the table's current selection."""
     table = event.data_table
     if isinstance(event, DataTable.CellSelected):
@@ -24,4 +28,7 @@ def event_row_key(event) -> RowKey | None:
         key, row = event.row_key, event.cursor_row
     if key is None or row != table.cursor_row or key != current_row_key(table):
         return None
+    if isinstance(event, DataTable.CellSelected):
+        if event.cell_key != table.coordinate_to_cell_key(event.coordinate):
+            return None
     return key

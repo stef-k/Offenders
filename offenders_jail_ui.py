@@ -108,7 +108,8 @@ class JailDetailScreen(Screen[None]):
                 event.timestamp.strftime("%Y-%m-%d"),
                 event.timestamp.strftime("%H:%M:%S"), event.ip,
             )
-        table.move_cursor(row=min(cursor.row, max(0, len(visible) - 1)), scroll=False)
+        if table.row_count:
+            table.move_cursor(row=max(0, min(cursor.row, table.row_count - 1)), scroll=False)
         table.scroll_to(x=scroll_x, y=scroll_y, animate=False, force=True)
 
     @on(DataTable.RowSelected, "#jail-history")
