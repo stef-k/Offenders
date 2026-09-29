@@ -126,6 +126,46 @@ class UfwTests(unittest.TestCase):
             text = self.added_text.replace('after 3 attempts', f'after {count} attempts')
             self.assertEqual(self.evidence(added=text).outcome, 'confirmed')
 
+    def test_unrelated_managed_rules_do_not_poison_absence(self):
+        """Ordinary actions and opaque rules for another source/action cannot be this ban."""
+        for rule in ['ufw allow 22/tcp', 'ufw limit 22/tcp',
+                     'ufw allow from 192.0.2.1 to any port 22',
+                     'ufw route reject from 192.0.2.1 to any',
+                     'ufw reject from 192.0.2.99 to any port 22',
+                     'ufw deny from 192.0.2.1 to any port 22']:
+            with self.subTest(rule=rule):
+                result = self.evidence(added=ufw.ADDED_HEADER + '\n' + rule + '\n')
+                self.assertEqual((result.outcome, result.reason, result.managed_rule),
+                                 ('missing', 'ufw-rule-absent', False))
+
+    def test_unrelated_live_rules_do_not_poison_absence(self):
+        """Nonblocking targets and opaque rules for another source/target cannot be this ban."""
+        for rule in ['-p tcp -m tcp --dport 22 -j ACCEPT',
+                     '-s 192.0.2.1/32 -p tcp -m tcp --dport 22 -j ACCEPT',
+                     '-s 192.0.2.1/32 -m conntrack --ctstate ESTABLISHED -j RETURN',
+                     '-p tcp -m tcp --dport 22 -j custom-chain',
+                     '-s 192.0.2.99/32 -p tcp --dport 22 -j REJECT',
+                     '-s 192.0.2.1/32 -p tcp --dport 22 -j DROP']:
+            with self.subTest(rule=rule):
+                live = '*filter\n:ufw-user-input - [0:0]\n-A ufw-user-input ' + rule + '\nCOMMIT\n'
+                result = self.evidence(live=live)
+                self.assertEqual((result.outcome, result.reason, result.managed_rule, result.live_rule),
+                                 ('missing', 'ufw-live-rule-absent', True, False))
+
+    def test_relevant_opaque_blocking_rules_remain_unverifiable(self):
+        """Unsupported scope on the expected host/action still prevents direct absence."""
+        for blocktype, target in [('deny', 'DROP'), ('reject', 'REJECT')]:
+            with self.subTest(blocktype=blocktype):
+                action = ufw.classify_ufw_action({**PROPERTIES, 'blocktype': blocktype})
+                added = self.added_text.replace('ufw reject from 192.0.2.1', f'ufw {blocktype} from 192.0.2.1')
+                opaque = ufw.ADDED_HEADER + f'\nufw {blocktype} from 192.0.2.1 to any port 22\n'
+                result = self.evidence(action=action, added=opaque)
+                self.assertEqual((result.outcome, result.reason), ('unverifiable', 'unsupported-added-rule'))
+                live = ('*filter\n:ufw-user-input - [0:0]\n'
+                        f'-A ufw-user-input -s 192.0.2.1/32 -i eth0 -j {target}\nCOMMIT\n')
+                result = self.evidence(action=action, added=added, live=live)
+                self.assertEqual((result.outcome, result.reason), ('unverifiable', 'unsupported-live-rule'))
+
     def test_same_ip_wrong_live_scope_target_chain_or_network_cannot_confirm(self):
         """UFW chain identity and both scopes survive normalization of live save facts."""
         for old, new in [('-s 192.0.2.1/32', '-s 192.0.2.0/24'),
@@ -180,6 +220,7 @@ class UfwTests(unittest.TestCase):
             with self.subTest(text=text[:50]):
                 self.assertEqual(self.evidence(status=text).outcome, 'unverifiable')
         for text in ['', ufw.ADDED_HEADER, 'Reglas añadidas:\n(None)\n', self.added_text + 'garbage\n',
+                     ufw.ADDED_HEADER + '\nufw allow\n',
                      self.added_text.replace("'Evidence App'", "'Evidence App"),
                      self.added_text.replace('from 192.0.2.1', 'from invalid'),
                      self.added_text.replace('from 192.0.2.1', 'from 192.0.2.1 port 22'),

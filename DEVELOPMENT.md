@@ -376,6 +376,12 @@ comment belongs only to the added-rule layer. Managed/live presence remain separ
 nullable facts; unavailable evidence is not authoritative absence. Optional
 `kill`/`kill-mode` behavior is retained as `connection_termination=not-verified`;
 no connection tool runs. Unfamiliar relevant rule restrictions fail closed.
+Opaque rules retain any established source and action/target identity: ordinary
+managed `allow`, `limit` and `route` rules and live nonblocking targets cannot
+hide an absent direct ban. Unsupported rules for another source or blocking
+action/target also cannot hide absence. Unknown or matching candidate identity
+remains unverifiable; malformed or incomplete snapshot framing still invalidates
+the evidence as a whole.
 
 The Ubuntu 24.04 disposable-container captures and sudo/locale qualification are
 documented in [fixture provenance](tests/fixtures/README.md#ufw-status-and-live-save-output).

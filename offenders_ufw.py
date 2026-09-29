@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import ipaddress
 import re
 import shlex
@@ -36,7 +36,7 @@ class UfwAction:
 
 @dataclass(frozen=True)
 class UfwRule:
-    """Only normalized exact source, destination, application and block facts."""
+    """Exact rule facts, or partial source/target identity for an opaque candidate."""
 
     source: str | None = None
     destination: str = ''
@@ -194,35 +194,37 @@ def parse_ufw_status(output: str) -> UfwStatus:
 
 def _added_rule(tokens: list[str]) -> UfwRule:
     """Project only the stock extended incoming source/destination/app/comment form."""
+    opaque = UfwRule(target=tokens[1].upper(), supported=False)
     if len(tokens) < 4 or tokens[:3] not in (['ufw', 'deny', 'from'], ['ufw', 'reject', 'from']):
-        return UfwRule(supported=False)
+        return opaque
     source = ipaddress.ip_network(tokens[3], strict=False)
     if '%' in tokens[3]:
         raise ValueError('Scoped source')
+    host = source.network_address.compressed if source.prefixlen == source.max_prefixlen else None
+    opaque = replace(opaque, source=host or source.with_prefixlen)
     remaining = tokens[4:]
     explicit_to = remaining[:1] == ['to']
     if explicit_to:
         if len(remaining) < 2:
-            return UfwRule(supported=False)
+            return opaque
         destination = _network(remaining[1], source.version)
         remaining = remaining[2:]
     elif not remaining or remaining[:1] == ['comment']:
         # UFW 0.36.2 removes exactly 'to any' when no destination port/app exists.
         destination = _network('any', source.version)
     else:
-        return UfwRule(supported=False)
+        return opaque
     app, comment = '', ''
     if remaining[:1] == ['app']:
         if not explicit_to or len(remaining) < 2 or not _profile(remaining[1]):
-            return UfwRule(supported=False)
+            return opaque
         app, remaining = remaining[1], remaining[2:]
     if remaining[:1] == ['comment']:
         if len(remaining) != 2 or len(remaining[1].encode('utf-8')) > 256:
-            return UfwRule(supported=False)
+            return opaque
         comment, remaining = remaining[1], []
     if remaining:
-        return UfwRule(supported=False)
-    host = source.network_address.compressed if source.prefixlen == source.max_prefixlen else None
+        return opaque
     return UfwRule(host, destination, app, tokens[1].upper(), comment)
 
 
@@ -239,7 +241,7 @@ def parse_ufw_added(output: str) -> UfwManagedSnapshot:
     try:
         for line in lines[1:]:
             tokens = shlex.split(line)
-            if len(tokens) < 2 or tokens[0] != 'ufw' or tokens[1] not in ('allow', 'deny', 'reject', 'limit', 'route'):
+            if len(tokens) < 3 or tokens[0] != 'ufw' or tokens[1] not in ('allow', 'deny', 'reject', 'limit', 'route'):
                 raise ValueError('Unrecognized added rule')
             rules.append(_added_rule(tokens))
         return UfwManagedSnapshot(tuple(rules))
@@ -251,12 +253,16 @@ def _live_rule(tokens: list[str], version: int) -> UfwRule:
     """Read only stock host/destination/application blocking rules in the user chain."""
     fields = {}
     modules = []
+    supported = True
     for index in range(2, len(tokens), 2):
         option = tokens[index]
-        if option not in ('-s', '-d', '-p', '-m', '--dport', '--dports', '--comment', '-j', '--reject-with'):
-            return UfwRule(supported=False)
         if index + 1 >= len(tokens):
             raise ValueError('Missing live option value')
+        if option not in ('-s', '-d', '-p', '-m', '--dport', '--dports', '--comment', '-j', '--reject-with'):
+            # Unmodeled pairs cannot match, but later source/target facts can
+            # exclude this rule from the expected direct ban's candidates.
+            supported = False
+            continue
         value = tokens[index + 1]
         if option == '-m':
             modules.append(value)
@@ -264,35 +270,39 @@ def _live_rule(tokens: list[str], version: int) -> UfwRule:
             return UfwRule(supported=False)
         else:
             fields[option] = value
+    target = fields.get('-j', '')
+    opaque = UfwRule(target=target, supported=False)
     if not fields.get('-s'):
-        return UfwRule(supported=False)
+        return opaque
     source = ipaddress.ip_network(fields['-s'], strict=False)
     if '%' in fields['-s'] or source.version != version:
         raise ValueError('Invalid source family')
+    host = source.network_address.compressed if source.prefixlen == source.max_prefixlen else None
+    opaque = replace(opaque, source=host or source.with_prefixlen)
     destination = _network(fields.get('-d', 'any'), version)
-    target = fields.get('-j', '')
+    if not supported:
+        return opaque
     if '--reject-with' in fields and (target != 'REJECT' or fields['--reject-with'] not in REJECT_REPLIES[version]):
-        return UfwRule(supported=False)
+        return opaque
     if any(module not in ('tcp', 'udp', 'multiport', 'comment') for module in modules):
-        return UfwRule(supported=False)
+        return opaque
     application = ''
     if '--comment' in fields:
         marker = re.fullmatch(r"\\'dapp_([A-Za-z0-9_.+%\-]+)\\'", fields['--comment'])
         if not marker:
-            return UfwRule(supported=False)
+            return opaque
         application = marker[1].replace('%20', ' ')
         if not _profile(application) or 'comment' not in modules:
-            return UfwRule(supported=False)
+            return opaque
     ports = fields.get('--dport', fields.get('--dports', ''))
     if application:
         if fields.get('-p') not in ('tcp', 'udp') or not re.fullmatch(r'\d+(?::\d+)?(?:,\d+(?::\d+)?)*', ports):
-            return UfwRule(supported=False)
+            return opaque
         if '--dport' in fields and '--dports' in fields or any(
             not 1 <= int(port) <= 65535 for port in re.split('[:,]', ports)):
-            return UfwRule(supported=False)
+            return opaque
     elif '-p' in fields or ports or modules:
-        return UfwRule(supported=False)
-    host = source.network_address.compressed if source.prefixlen == source.max_prefixlen else None
+        return opaque
     return UfwRule(host, destination, application, target)
 
 
@@ -385,6 +395,13 @@ def _matching_rules(action: UfwAction, host: str, rules: Sequence[UfwRule], *, f
                (not frontend or re.fullmatch(pattern, rule.comment) is not None) for rule in rules)
 
 
+def _opaque_candidate(action: UfwAction, host: str, rules: Sequence[UfwRule], *, frontend: bool) -> bool:
+    """Only unknown or matching source/target identity can obscure this direct ban."""
+    target = action.blocktype.upper() if frontend else {'deny': 'DROP', 'reject': 'REJECT'}[action.blocktype]
+    return any(not rule.supported and rule.source in (None, host) and rule.target in ('', target)
+               for rule in rules)
+
+
 def verify_ufw_ban(action: UfwAction, ip: str, status: UfwStatus, added: UfwManagedSnapshot, live: UfwLiveSnapshot) -> UfwEvidence:
     """Require independent active state, exact managed identity and live scope."""
     termination = 'not-verified' if action.termination_requested else 'not-requested'
@@ -404,9 +421,9 @@ def verify_ufw_ban(action: UfwAction, ip: str, status: UfwStatus, added: UfwMana
     elif added.reason or live.reason:
         outcome, reason = 'unverifiable', added.reason or live.reason
     elif not managed:
-        opaque = any(not rule.supported for rule in added.rules)
+        opaque = _opaque_candidate(action, address.compressed, added.rules, frontend=True)
         outcome, reason = ('unverifiable', 'unsupported-added-rule') if opaque else ('missing', 'ufw-rule-absent')
     elif not underlying:
-        opaque = any(not rule.supported for rule in live.rules)
+        opaque = _opaque_candidate(action, address.compressed, live.rules, frontend=False)
         outcome, reason = ('unverifiable', 'unsupported-live-rule') if opaque else ('missing', 'ufw-live-rule-absent')
     return UfwEvidence(outcome, reason, managed, underlying, termination)
