@@ -1,16 +1,16 @@
 """Bound read-only Fail2Ban commands and parse structured daemon status."""
 from __future__ import annotations
 
-import ipaddress
 import hashlib
+import ipaddress
 import json
 import math
 import re
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import List, Optional, Tuple
-from collections.abc import Mapping
 
 class CommandFailure(str, Enum):
     """Stable failure categories for host-command callers."""
@@ -210,7 +210,7 @@ def _validate_action_property(name: str) -> None:
 
 def _bounded_action_text(value: str) -> str:
     """Reject oversized/control-bearing evidence without retaining a truncation."""
-    if len(value) > ACTION_TEXT_LIMIT or any(
+    if len(value) > ACTION_TEXT_LIMIT or len(value.encode("utf-8")) > ACTION_TEXT_LIMIT or any(
         ord(char) < 32 and char not in "\n\t" or ord(char) == 127 for char in value
     ):
         raise Fail2BanParseError("Invalid or oversized Fail2Ban action text")
@@ -288,11 +288,17 @@ def resolve_action_property(properties: Mapping[str, str], name: str, *, family:
     """
     if family not in ("inet4", "inet6") or name not in ACTION_BASE_PROPERTIES:
         raise Fail2BanParseError("Unsupported action resolution property/family")
+    resolved = {}
 
     def resolve(key: str, path: tuple[str, ...]) -> str:
         """Bound each reference path and the accumulated expansion size."""
         if key not in ACTION_BASE_PROPERTIES or key in path or len(path) >= ACTION_RESOLUTION_DEPTH:
             raise Fail2BanParseError("Unsupported, cyclic or too deep action reference")
+        # Cache at the current depth so repeated empty references cannot cause
+        # exponential work, without bypassing the remaining recursion budget.
+        cache_key = (key, len(path))
+        if cache_key in resolved:
+            return resolved[cache_key]
         selected = f"{key}?family=inet6" if family == "inet6" and f"{key}?family=inet6" in properties else key
         if selected not in properties:
             raise Fail2BanParseError("Unresolved action property reference")
@@ -304,18 +310,19 @@ def resolve_action_property(properties: Mapping[str, str], name: str, *, family:
         for match in re.finditer(r"<([^<>]+)>", value):
             literal = value[end:match.start()]
             replacement = resolve(match[1], (*path, key))
-            size += len(literal) + len(replacement)
+            size += len(literal.encode("utf-8")) + len(replacement.encode("utf-8"))
             if size > ACTION_TEXT_LIMIT:
                 raise Fail2BanParseError("Action property expansion exceeds bound")
             parts.extend((literal, replacement))
             end = match.end()
-        size += len(value) - end
+        size += len(value[end:].encode("utf-8"))
         if size > ACTION_TEXT_LIMIT:
             raise Fail2BanParseError("Action property expansion exceeds bound")
         parts.append(value[end:])
         result = "".join(parts)
         if "<" in result or ">" in result:
             raise Fail2BanParseError("Unresolved or malformed action reference")
+        resolved[cache_key] = result
         return result
 
     return resolve(name, ())

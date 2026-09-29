@@ -57,7 +57,8 @@ class ActionTests(unittest.TestCase):
             call(['fail2ban-client', 'get', 'sshd', 'action', 'guard-main', 'addr_set?family=inet6'], timeout=8, sudo=True)])
         self.assertEqual(f2b.parse_action_property('\n'), '')
         self.assertEqual(f2b.parse_action_property('  literal\nline  \n'), '  literal\nline  ')
-        for output in ['x' * (f2b.ACTION_TEXT_LIMIT + 1), 'bad\x00value']:
+        for output in ['x' * (f2b.ACTION_TEXT_LIMIT + 1),
+                       'é' * (f2b.ACTION_TEXT_LIMIT // 2 + 1), 'bad\x00value']:
             with self.assertRaises(f2b.Fail2BanParseError):
                 f2b.parse_action_property(output)
 
@@ -94,6 +95,9 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(f2b.resolve_action_property(properties, 'addr_set', family='inet6'), 'addr6-literal')
         self.assertEqual(f2b.resolve_action_property(properties, 'iptables', family='inet6'), 'literal -w')
         self.assertEqual(f2b.resolve_action_property({'application': ''}, 'application'), '')
+        empty_references = {'name': '<chain>' * 100, 'chain': '<table>' * 100,
+                            'table': '<application>' * 100, 'application': ''}
+        self.assertEqual(f2b.resolve_action_property(empty_references, 'name'), '')
 
     def test_resolution_failures_and_expansion_bound(self):
         """Depth, cycles, missing/unknown tags, interpolation and growth are unsupported."""
