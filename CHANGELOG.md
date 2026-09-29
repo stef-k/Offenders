@@ -4,10 +4,6 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
-- Add the internal stock-compatible iptables enforcement reader, including
-  matching ordinary/nft/legacy IPv4 and IPv6 save views and exact direct host-rule
-  evidence (#111). UI and race-bracket integration remain separate.
-
 ## 0.3.1 - 2026-09-29
 
 - Harden empty, invalid and stale TUI selections and result-dependent actions;
