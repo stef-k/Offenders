@@ -325,6 +325,52 @@ unverifiable, and no recursive chain traversal or packet-path evaluation occurs.
 Later integration owns namespace and opening/closing ban/action stability gates;
 this backend has no UI, ordinary Report, export or full race-bracket caller.
 
+### UFW direct evidence
+
+`offenders_ufw.classify_ufw_action` requires the complete stock Fail2Ban
+1.0.2/1.1.0 conditional UFW rule path, with `prepend`, `deny`/`reject`, a numeric
+destination (or `any`), and an empty or bounded application-profile identity.
+It consumes foundation runtime properties without executing the action text.
+Comments may be empty, bounded static literals, or the stock
+`by Fail2Ban after <failures> attempts against <name>` template. Only that
+template permits a dynamic field: one to ten ASCII decimal count digits, with
+the resolved name exact. Other unresolved/static substitutions retain the
+foundation parse error; custom action syntax is unsupported.
+
+`read_ufw_status` runs only `sudo -n ufw status numbered`.
+`read_ufw_saves` deduplicates relevant IP families and runs only bare
+`sudo -n iptables-save` or `sudo -n ip6tables-save`. Each uses the existing
+eight-second command deadline and a 4 MiB parser/retention bound after capture.
+There is no locale wrapper, fallback, action execution or mutation command.
+The status contract is qualified C/English UFW 0.36.2; localized or unfamiliar
+framing stays unverifiable. Failed status reads leave active state unknown,
+distinct from a successful installed/active or installed/inactive observation.
+
+`parse_ufw_status` retains normalized managed source/destination/application,
+block and comment facts. `parse_ufw_save` validates save framing and keeps only
+the matching `ufw-user-input` or `ufw6-user-input` chain's live scope and target.
+It reuses #111's identical bounds, chain grammar and finite REJECT replies;
+the reviewed iptables projection/parser is unchanged because it intentionally
+discards UFW's required destination/application scope. No generic parser or
+frontend model is introduced. Snapshots retain no raw firewall dumps.
+
+`verify_ufw_ban` requires active status plus an exact managed row and live rule.
+`deny` corresponds to DROP and `reject` to REJECT. Numeric destinations normalize
+as networks; sources must be exact hosts. Application rules require the exact
+`dapp_<profile>` live marker, with spaces encoded as `%20`. The expected user
+comment belongs only to the status layer. Managed/live presence remain separate
+nullable facts; unavailable evidence is not authoritative absence. Optional
+`kill`/`kill-mode` behavior is retained as `connection_termination=not-verified`;
+no connection tool runs. Unfamiliar relevant rule restrictions fail closed.
+
+The Ubuntu 24.04 disposable-container captures and sudo/locale qualification are
+documented in [fixture provenance](tests/fixtures/README.md#ufw-status-and-live-save-output).
+They establish the output contract, not full supported-host acceptance. Later
+integration owns namespace and opening/closing action/ban stability gates;
+this backend has no UI, ordinary Report/export caller, timer or race orchestrator.
+Direct rule observation does not prove packet reachability or arbitrary UFW
+before/after rule correctness. #113 owns the consolidated feature changelog.
+
 ## Packaging and distribution
 
 `pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static

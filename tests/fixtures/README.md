@@ -101,6 +101,38 @@ The no-argument IPv4 legacy save read could not be qualified in this environment
 `/proc/net/ip_tables_names` was permission denied. This is local parser evidence,
 not supported-host, live sudo or namespace/race-bracket qualification.
 
+## UFW status and live save output
+
+`ufw-status.txt`, `ufw-v4.save` and `ufw-v6.save` are actual captures from a
+disposable Ubuntu 24.04 container using UFW `0.36.2-6` and iptables
+`1.8.10-3ubuntu2` (the system nft compatibility view). Setup enabled UFW and added
+only documentation-address incoming rules: IPv4 REJECT, IPv4 subnet destination,
+IPv4 application DENY, IPv6 DENY, and IPv6 application DENY with an exact numeric
+destination. `Evidence App` is a disposable profile with TCP 22/2222 and UDP 53.
+The profile spans multiple live rules but one numbered frontend row. Capture
+commands were precisely `ufw status numbered`, `iptables-save` and
+`ip6tables-save`, with no save arguments. No production ruleset was accessed.
+
+Qualification used a non-root disposable user with narrowly enumerated sudo
+grants. `sudo -n ufw status numbered` produced C/English numbered headers, rows
+and comments under the container's default POSIX locale. UFW's source in the
+installed package (`backend_iptables.py`, `get_status`) confirms this frontend
+projection, including numeric destinations and application names. Live rules
+use exact `ufw-user-input`/`ufw6-user-input` chains and escaped quoted
+`dapp_Evidence%20App` markers. The user-facing comment appears in status only.
+This qualifies the baseline package's output contract and ordinary sudo path;
+it does not claim all user locales become English, a full live systemd host,
+the integration race bracket, or end-to-end packet acceptance. Localized status
+is deliberately unverifiable. The product adds no locale-forcing capability.
+
+The stock action definition was compared through GitHub's API at upstream
+[Fail2Ban 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/ufw.conf)
+and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/ufw.conf);
+the files are identical. Fixture setup is external to the backend. Ordinary
+tests use these captures and small inline mutations; they never invoke UFW,
+save tools, connection termination or mutation commands. The parser does not
+use human `ufw show raw` output.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based
