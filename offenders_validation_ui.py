@@ -7,6 +7,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Static
 from textual.worker import get_current_worker
 
+from offenders_selection import current_row_key, event_row_key
 from offenders_activity import OffendersFooter
 from offenders_validation import FilterValidation, eligible_targets, validate_existing
 
@@ -90,7 +91,8 @@ class ValidationScreen(Screen):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """An explicit row selection starts only that target's validation."""
-        self.action_validate()
+        if event.data_table is self.query_one(DataTable) and event_row_key(event) is not None:
+            self.action_validate()
 
     def action_validate(self) -> None:
         """Reject repeated requests while the current bounded operation is active."""
@@ -99,7 +101,11 @@ class ValidationScreen(Screen):
             return
         if self._delivery_closed or not self.targets:
             return
-        target = self.targets[self.query_one(DataTable).cursor_row]
+        key = current_row_key(self.query_one(DataTable))
+        targets = {str(index): target for index, target in enumerate(self.targets)}
+        target = targets.get(key.value) if key is not None else None
+        if target is None:
+            return
         self._active = True
         self.query_one("#validation-detail", Static).update(Text(f"Validating… {target.name} / {target.filter_stem}"))
         self._validate(target)
@@ -114,11 +120,11 @@ class ValidationScreen(Screen):
         except Exception:
             result, error = None, "Validation unavailable: unexpected validation error"
         if not worker.is_cancelled:
-            app.call_from_thread(self._complete, result, error)
+            app.call_from_thread(self._complete, result, error, worker)
 
-    def _complete(self, result, error) -> None:
+    def _complete(self, result, error, worker=None) -> None:
         """Discard delivery to removed screens without touching newer views."""
-        if self._delivery_closed or not self.is_mounted:
+        if self._delivery_closed or not self.is_mounted or (worker is not None and worker.is_cancelled):
             return
         self._active = False
         self.result = result

@@ -70,7 +70,7 @@ class CustomCandidateScreen(Screen):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Hide copy until a reviewable candidate is actually displayed."""
         if action == "copy_candidate":
-            return bool(not self._active and self.result and self.result.state == "reviewable")
+            return bool(not self._delivery_closed and not self._active and self.result and self.result.state == "reviewable")
         return True
 
     def action_generate(self) -> None:
@@ -95,11 +95,11 @@ class CustomCandidateScreen(Screen):
         except Exception:
             result, error = None, "Custom candidate withheld: unexpected generation/validation error"
         if not worker.is_cancelled:
-            app.call_from_thread(self._complete, result, error)
+            app.call_from_thread(self._complete, result, error, worker)
 
-    def _complete(self, result, error) -> None:
+    def _complete(self, result, error, worker=None) -> None:
         """Discard stale results after close or external removal."""
-        if self._delivery_closed or not self.is_mounted:
+        if self._delivery_closed or not self.is_mounted or (worker is not None and worker.is_cancelled):
             return
         self._active = False
         self.result = result

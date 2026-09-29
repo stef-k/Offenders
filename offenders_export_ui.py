@@ -51,7 +51,7 @@ class ExportScreen(Screen):
     def check_action(self, action, parameters):
         """Expose copy only while an exact successful path is retained."""
         if action == "copy_path":
-            return self.path is not None and not self._active
+            return self.path is not None and not self._active and not self._delivery_closed
         return True
 
     def action_export(self):
@@ -78,11 +78,11 @@ class ExportScreen(Screen):
             path = None
             error = "Export failed: " + (" ".join(str(failure).split())[:240] or type(failure).__name__)
         if not worker.is_cancelled:
-            app.call_from_thread(self._complete, path, error)
+            app.call_from_thread(self._complete, path, error, worker)
 
-    def _complete(self, path, error):
+    def _complete(self, path, error, worker=None):
         """Keep successful paths visible until close or another export."""
-        if self._delivery_closed or not self.is_mounted:
+        if self._delivery_closed or not self.is_mounted or (worker is not None and worker.is_cancelled):
             return
         self._active = False
         self.path = path

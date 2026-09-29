@@ -4,6 +4,9 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Harden empty, invalid and stale TUI selections and result-dependent actions;
+  prevent the Coverage empty-highlight crash and unintended navigation, validation or copy.
+
 ## 0.3.0 - 2026-09-29
 
 - Refresh public investigation/diagnostics positioning, discovery metadata, and

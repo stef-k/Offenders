@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.worker import get_current_worker
 from textual.widgets import DataTable, Static
 
+from offenders_selection import current_row_key, event_row_key
 from offenders_activity import OffendersFooter
 from offenders_validation_ui import ValidationScreen
 from offenders_candidate_ui import CustomCandidateScreen
@@ -169,11 +170,11 @@ class RecommendationsScreen(Screen):
         except Exception as exc:
             inventory, error = None, bounded_error(exc)
         if not worker.is_cancelled:
-            app.call_from_thread(self._complete, inventory, error)
+            app.call_from_thread(self._complete, inventory, error, worker)
 
-    def _complete(self, inventory: FindingInventory | None, error: str | None) -> None:
+    def _complete(self, inventory: FindingInventory | None, error: str | None, worker=None) -> None:
         """A closed/unmounted view cannot publish into a later screen."""
-        if self._delivery_closed or not self.is_mounted:
+        if self._delivery_closed or not self.is_mounted or (worker is not None and worker.is_cancelled):
             return
         summary = self.query_one("#coverage-summary", Static)
         if error is not None:
@@ -195,7 +196,9 @@ class RecommendationsScreen(Screen):
     @on(DataTable.RowHighlighted, "#coverage-findings")
     def highlight_finding(self, event: DataTable.RowHighlighted) -> None:
         """Use stable row identity, never parse formatted cells back into policy."""
-        self._show_detail(event.row_key.value)
+        key = event_row_key(event)
+        if key is not None and not self._delivery_closed:
+            self._show_detail(key.value)
 
     def _show_detail(self, key: str) -> None:
         """Replace the selected detail without caching other rendered evidence."""
@@ -205,9 +208,12 @@ class RecommendationsScreen(Screen):
 
     def action_validate(self) -> None:
         """Open explicit validation using this screen's exact retained finding."""
-        if self.inventory is None or not self.inventory.findings:
+        if self._delivery_closed or self.inventory is None:
             return
-        decision = self.inventory.findings[self.query_one(DataTable).cursor_row]
+        key = current_row_key(self.query_one(DataTable))
+        decision = self.decisions.get(key.value) if key is not None else None
+        if decision is None:
+            return
         screen = CustomCandidateScreen if decision.classification == "custom_gap_candidate" else ValidationScreen
         self.app.push_screen(screen(self.inventory, decision))
 

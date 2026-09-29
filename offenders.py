@@ -15,6 +15,7 @@ from textual.worker import Worker, get_current_worker
 from rich.text import Text
 from textual.widgets import DataTable, Header, Input, Static
 
+from offenders_selection import current_row_key, event_row_key
 from offenders_activity import ActivityWorkers, OffendersFooter
 from offenders_help import HelpScreen, context_text, help_context
 from offenders_help_content import HELP_BINDING, project_information
@@ -156,7 +157,9 @@ class OffendersApp(App):
     @on(DataTable.CellSelected, "#bans-per-jail")
     def open_jail(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
         """Open only a real jail identity from the latest successful report."""
-        key = event.row_key if isinstance(event, DataTable.RowSelected) else event.cell_key.row_key
+        key = event_row_key(event)
+        if key is None:
+            return
         jail = key.value
         if self._last_report is None or jail not in self._last_report.jail_list:
             return
@@ -179,7 +182,9 @@ class OffendersApp(App):
     @on(DataTable.CellSelected, "#offenders, #last-bans")
     def open_ip(self, event: DataTable.RowSelected | DataTable.CellSelected) -> None:
         """Capture IP identity for both opening and dashboard return selection."""
-        ip = self._selected_ip()
+        if event_row_key(event) is None:
+            return
+        ip = self._selected_ip(event.data_table)
         if ip is None or self._last_report is None:
             return
         table = event.data_table
@@ -187,11 +192,12 @@ class OffendersApp(App):
                          lambda result: self._restore_ip_focus(table, ip))
 
     def _restore_ip_focus(self, table: DataTable, ip: str) -> None:
-        """Find the original IP after reordering, or select a valid fallback row."""
+        """Restore a surviving IP identity; otherwise keep the new table selection."""
         column = 1 if table.id == "offenders" else 3
         row = next((i for i in range(table.row_count)
-                    if str(table.get_row_at(i)[column]) == ip), 0)
-        table.move_cursor(row=row)
+                    if str(table.get_row_at(i)[column]) == ip), None)
+        if row is not None:
+            table.move_cursor(row=row)
         table.focus()
 
     def _restore_jail_focus(self, jail: str) -> None:
@@ -336,8 +342,11 @@ class OffendersApp(App):
             print(text)
             self.notify("Clipboard unavailable (printed to stdout)", timeout=2.0)
 
-    def _selected_ip(self) -> Optional[str]:
-        table = self.focused
+    def _selected_ip(self, table: DataTable | None = None) -> Optional[str]:
+        """Resolve only a real current IP row backed by a committed report."""
+        if self._last_report is None:
+            return None
+        table = self.focused if table is None else table
         if not isinstance(table, DataTable):
             return None
 
@@ -385,92 +394,24 @@ class OffendersApp(App):
     # ---- Copy helpers (robust across Textual versions) ----
 
     def _cursor_indexes(self, table: DataTable) -> Optional[Tuple[int, int]]:
-        """
-        Returns (row_index, col_index) in display order, if possible.
-        Falls back to mapping row/col keys to indices.
-        """
-        if not table.row_count:
+        """Return bounded display coordinates; focus alone is not selection."""
+        if current_row_key(table) is None:
             return None
-        coord = getattr(table, "cursor_coordinate", None)
-        if coord is not None:
-            try:
-                return (coord.row, coord.column)
-            except Exception:
-                pass
-
-        row_key = getattr(table, "cursor_row", None)
-        col_key = getattr(table, "cursor_column", None)
-        if row_key is None:
+        column = table.cursor_column
+        if table.cursor_type == "cell" and not 0 <= column < len(table.columns):
             return None
+        return table.cursor_row, column
 
-        try:
-            row_keys = getattr(table, "row_keys", None)
-            if row_keys is not None:
-                row_index = list(row_keys).index(row_key)
-            else:
-                return None
-        except Exception:
-            return None
-
-        if col_key is None:
-            return (row_index, -1)
-
-        try:
-            # table.columns contains Column objects; compare by .key
-            col_index = -1
-            for i, col in enumerate(table.columns):
-                if getattr(col, "key", None) == col_key:
-                    col_index = i
-                    break
-            return (row_index, col_index)
-        except Exception:
-            return (row_index, -1)
-
-    def _row_values_at(self, table: DataTable, row_index: int) -> Tuple[object, ...]:
-        # Prefer direct index API if available
-        if hasattr(table, "get_row_at"):
-            return table.get_row_at(row_index)  # type: ignore[attr-defined]
-
-        row_keys = getattr(table, "row_keys", None)
-        if row_keys is None:
-            return tuple()
-
-        row_key = list(row_keys)[row_index]
-        return table.get_row(row_key)
+    def _row_values_at(self, table: DataTable, row_index: int) -> list[object]:
+        """Read only rows that still exist in the displayed table."""
+        return table.get_row_at(row_index) if 0 <= row_index < table.row_count else []
 
     def _cell_value_at(
         self, table: DataTable, row_index: int, col_index: int
     ) -> Optional[object]:
-        if row_index < 0 or col_index < 0:
-            return None
-
-        # Prefer direct index API if available
-        if hasattr(table, "get_cell_at"):
-            try:
-                return table.get_cell_at(row_index, col_index)  # type: ignore[attr-defined]
-            except Exception:
-                pass
-
-        # Fall back to key-based cell access if possible
-        try:
-            row_keys = getattr(table, "row_keys", None)
-            if row_keys is not None and col_index < len(table.columns):
-                row_key = list(row_keys)[row_index]
-                col_key = getattr(table.columns[col_index], "key", None)
-                if col_key is not None:
-                    return table.get_cell(row_key, col_key)
-        except Exception:
-            pass
-
-        # Last resort: row tuple + column index
-        try:
-            row = self._row_values_at(table, row_index)
-            if 0 <= col_index < len(row):
-                return row[col_index]
-        except Exception:
-            pass
-
-        return None
+        """Keep missing cells distinct from valid empty strings and numeric zero."""
+        row = self._row_values_at(table, row_index)
+        return row[col_index] if 0 <= col_index < len(row) else None
 
     # ---- Consolidated copy action ----
 
@@ -479,6 +420,10 @@ class OffendersApp(App):
         if not isinstance(table, DataTable):
             return
 
+        if table.id == "bans-per-jail":
+            key = current_row_key(table)
+            if self._last_report is None or key is None or key.value not in self._last_report.jail_list:
+                return
         if table.id == "offenders" and self.summary_view.mode != "IP":
             if not self.summary_view.copyable():
                 return
@@ -542,10 +487,7 @@ class OffendersApp(App):
         jails_line = self.query_one("#jails-line", Static)
         bans_per_jail = self.query_one("#bans-per-jail", DataTable)
 
-        selected_jail = (
-            bans_per_jail.coordinate_to_cell_key(bans_per_jail.cursor_coordinate).row_key
-            if bans_per_jail.row_count else None
-        )
+        selected_jail = current_row_key(bans_per_jail)
         bans_per_jail.clear()
 
         self._last_report = r
