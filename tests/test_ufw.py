@@ -140,6 +140,20 @@ class UfwTests(unittest.TestCase):
             with self.subTest(new=new):
                 self.assertEqual(self.evidence('192.0.2.2', app, live=self.save_text[4].replace(old, new)).outcome, 'missing')
 
+    def test_numeric_application_row_cannot_prove_a_destination_rule(self):
+        """Baseline safety counterexample: a legal profile looks exactly like an IP destination.
+
+        Reproduced with UFW 0.36.2, a numeric-named frontend application rule,
+        and an unrelated destination-only live rule. The issue requires stopping
+        for this output-contract contradiction rather than widening the parser.
+        """
+        action = ufw.classify_ufw_action({**PROPERTIES, 'blocktype': 'deny', 'destination': '198.51.100.10'})
+        status = self.status_text.replace('Evidence App', '198.51.100.10')
+        live = self.save_text[4].replace('dapp_Evidence%20App', 'dapp_198.51.100.10')
+        unrelated = '-A ufw-user-input -s 192.0.2.2/32 -d 198.51.100.10/32 -j DROP\n'
+        live = live.replace('COMMIT\n', unrelated + 'COMMIT\n')
+        self.assertEqual(self.evidence('192.0.2.2', action, status=status, live=live).outcome, 'unverifiable')
+
     def test_localized_malformed_oversized_and_opaque_output_is_unverifiable(self):
         """Unfamiliar output and rule restrictions cannot prove authoritative absence."""
         for text in ['Estado: activo\n', self.status_text.replace('Action', 'Acción'),

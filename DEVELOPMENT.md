@@ -327,6 +327,15 @@ this backend has no UI, ordinary Report, export or full race-bracket caller.
 
 ### UFW direct evidence
 
+**Issue #112 qualification is blocked.** Ubuntu 24.04 UFW 0.36.2 permits an
+application profile named `198.51.100.10` and renders it exactly like a numeric
+destination in numbered status. Qualification reproduced a false confirmation
+by combining that application row with a separate destination-only live rule
+for the same source. Excluding configured numeric-named applications does not
+disambiguate unrelated rows. The retained regression fails intentionally until
+the fixed-read evidence contract is resolved; this backend is not accepted.
+Per #112, implementation stopped at this supported-baseline contradiction.
+
 `offenders_ufw.classify_ufw_action` requires the complete stock Fail2Ban
 1.0.2/1.1.0 conditional UFW rule path, with `prepend`, `deny`/`reject`, a numeric
 destination (or `any`), and an empty or bounded application-profile identity

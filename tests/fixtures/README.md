@@ -144,6 +144,15 @@ tests use these captures and small inline mutations; they never invoke UFW,
 save tools, connection termination or mutation commands. The parser does not
 use human `ufw show raw` output.
 
+Further disposable-baseline qualification found a safety counterexample:
+UFW accepted `[198.51.100.10]` as an application profile and printed its
+source-specific application DENY row with `198.51.100.10` in the To column.
+A separately inserted live destination-only DROP rule for the same source then
+caused the current verifier to return a false confirmation for a destination
+action. `test_numeric_application_row_cannot_prove_a_destination_rule` retains
+this contradiction as a failing regression. #112 requires a safety stop here;
+the successful ordinary cases above do not establish feature acceptance.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based
