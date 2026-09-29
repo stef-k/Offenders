@@ -70,7 +70,7 @@ class ActionTests(unittest.TestCase):
                     f2b.get_action_properties('sshd', action)
                 with self.assertRaises(f2b.Fail2BanParseError):
                     f2b.get_action_property('sshd', action, 'name')
-            for prop in ['timeout', '__dict__', 'ban', 'name?family=other', 'unknown']:
+            for prop in ['timeout', '__dict__', 'ban', 'name?family=other', 'name?family=inet6', 'unknown']:
                 with self.assertRaises(f2b.Fail2BanParseError):
                     f2b.get_action_property('sshd', 'guard-main', prop)
         runner.assert_not_called()

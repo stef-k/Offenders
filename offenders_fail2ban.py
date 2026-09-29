@@ -191,9 +191,10 @@ ACTION_BASE_PROPERTIES = frozenset({
     "chain_type", "chain_hook", "addr_set", "blocktype", "iptables", "lockingopt",
     "add", "destination", "application", "comment", "kill-mode", "kill",
 })
-ACTION_PROPERTIES = ACTION_BASE_PROPERTIES | frozenset(
-    f"{name}?family=inet6" for name in ACTION_BASE_PROPERTIES
-)
+# Only these stock properties require conditional IPv6 reads.
+ACTION_PROPERTIES = ACTION_BASE_PROPERTIES | frozenset({
+    "addr_set?family=inet6", "blocktype?family=inet6", "iptables?family=inet6",
+})
 
 
 def _validate_action(action: str) -> None:
