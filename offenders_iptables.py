@@ -90,6 +90,16 @@ def classify_iptables_action(properties: Mapping[str, str], *, family: str = 'in
     raw = properties.get('actionban', '')
     if raw.count('<ip>') != 1:
         return None
+    # Other action families need not expose iptables-specific properties.
+    try:
+        template = shlex.split(raw)
+    except ValueError:
+        return None
+    if '-I' not in template:
+        return None
+    insertion = template.index('-I')
+    if template[insertion + 2:insertion + 6] != ['1', '-s', '<ip>', '-j']:
+        return None
     facts = {**properties, 'actionban': raw.replace('<ip>', 'OFFENDERS_IP')}
     command = resolve_action_property(facts, 'actionban', family=family)
     values = {key: resolve_action_property(properties, key, family=family)

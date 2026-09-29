@@ -129,6 +129,7 @@ class IptablesTests(unittest.TestCase):
 
     def test_unsupported_and_unresolved_actions_fail_closed(self):
         """Custom paths, wrappers, shell programs and unsupported targets never map."""
+        self.assertIsNone(ipt.classify_iptables_action({'actionban': 'sendmail <ip>'}))
         for change in [{'iptables': '/usr/sbin/iptables -w'}, {'iptables': 'wrapper iptables'},
                        {'iptables': 'iptables-save'}, {'iptables': 'iptables -t filter'},
                        {'iptables': 'iptables --unknown'}, {'iptables': 'ip6tables -w'},
