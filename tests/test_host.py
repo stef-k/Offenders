@@ -122,3 +122,46 @@ class HostTests(unittest.TestCase):
         inventory, _ = self.snapshot(systemd=CommandResult(0, "Id=ssh.service", ""))
         self.assertEqual(inventory.systemd.status, "partial")
         self.assertEqual(inventory.services[0].units, ())
+
+
+class NamespaceTests(unittest.TestCase):
+    """Fail2Ban PID and namespace identity use only systemd/proc read seams."""
+
+    def test_same_and_different_retain_bracket_identities(self):
+        """A definite comparison retains PID and both valid namespace identities."""
+        for daemon, state in [('net:[42]', host.NamespaceState.SAME),
+                              ('net:[43]', host.NamespaceState.DIFFERENT)]:
+            with self.subTest(daemon=daemon), patch.object(host, 'run_host_command', return_value=CommandResult(0, '123\n', '')) as runner:
+                with patch.object(host.os, 'readlink', side_effect=['net:[42]', daemon]) as readlink:
+                    result = host.get_fail2ban_namespace()
+            self.assertEqual(result, host.NetworkNamespaceIdentity(state, 123, 'net:[42]', daemon))
+            runner.assert_called_once_with(['systemctl', 'show', '--property=MainPID', '--value', 'fail2ban.service'], timeout=8, sudo=False)
+            self.assertEqual(readlink.call_args_list, [call('/proc/self/ns/net'), call('/proc/123/ns/net')])
+
+    def test_command_or_pid_unavailable_never_reads_proc(self):
+        """Failed systemd and malformed/non-running PIDs cannot become mismatch."""
+        failed = CommandResult(1, '123\n', 'denied', CommandFailure.NONZERO_EXIT)
+        results = [failed, *[CommandResult(0, text, '') for text in
+                            ['', '0\n', '-1', 'MainPID=123', '1\n2\n', '123\n\n', '9' * 40]]]
+        for response in results:
+            with self.subTest(response=response), patch.object(host, 'run_host_command', return_value=response):
+                with patch.object(host.os, 'readlink') as readlink:
+                    result = host.get_fail2ban_namespace()
+            self.assertEqual(result.state, host.NamespaceState.UNAVAILABLE)
+            self.assertIsNone(result.main_pid)
+            readlink.assert_not_called()
+
+    def test_disappeared_inaccessible_or_malformed_namespace(self):
+        """Read failures retain available identities and never report different."""
+        for reads, current in [([FileNotFoundError('gone')], None),
+                               (['net:[42]', FileNotFoundError('gone')], 'net:[42]'),
+                               (['net:[42]', PermissionError('denied')], 'net:[42]'),
+                               (['net:[42]', 'not-a-namespace'], 'net:[42]'),
+                               (['net:[0]'], None), (['net:[42]\n'], None)]:
+            with self.subTest(reads=reads), patch.object(host, 'run_host_command', return_value=CommandResult(0, '123', '')):
+                with patch.object(host.os, 'readlink', side_effect=reads):
+                    result = host.get_fail2ban_namespace()
+            self.assertEqual(result.state, host.NamespaceState.UNAVAILABLE)
+            self.assertEqual(result.main_pid, 123)
+            self.assertEqual(result.current_namespace, current)
+            self.assertIsNone(result.fail2ban_namespace)

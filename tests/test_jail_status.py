@@ -72,6 +72,20 @@ class JailStatusTests(unittest.TestCase):
               for name in ['bantime', 'findtime', 'maxretry']],
         ])
 
+    def test_core_status_reads_only_status_and_preserves_failures(self):
+        """Fresh enforcement status never fetches optional settings or sources."""
+        output = fixture('status-sshd-1.0.2-live.txt')
+        failure = app.CommandResult(1, output, 'denied', app.CommandFailure.NONZERO_EXIT)
+        for result, error in [(success(output), None), (failure, app.Fail2BanCommandError),
+                              (success('malformed'), app.Fail2BanParseError)]:
+            with self.subTest(result=result), patch.object(app, 'run_host_command', return_value=result) as command:
+                if error:
+                    with self.assertRaises(error):
+                        app.get_jail_core_status('sshd')
+                else:
+                    self.assertEqual(app.get_jail_core_status('sshd'), app.JailStatus('sshd', 0, 0, 0, 0, ()))
+            command.assert_called_once_with(['fail2ban-client', 'status', 'sshd'], timeout=8, sudo=True)
+
     def test_optional_failures_do_not_corrupt_status(self):
         """Retain optional command taxonomy and parse failure alongside core data."""
         failure = app.CommandResult(1, '', 'unsupported', app.CommandFailure.NONZERO_EXIT)

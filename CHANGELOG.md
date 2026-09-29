@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add read-only runtime Fail2Ban action discovery, bounded static property
+  resolution/fingerprints, core-only jail status and network namespace identity
+  seams for later enforcement verification (#109).
+
 ## 0.3.1 - 2026-09-29
 
 - Harden empty, invalid and stale TUI selections and result-dependent actions;

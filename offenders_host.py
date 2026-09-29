@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from enum import Enum
 import ipaddress
+import os
 import re
 
 from offenders_fail2ban import CommandFailure, CommandResult, run_host_command
@@ -22,6 +24,50 @@ UNITS = tuple(unit for _, _, units in CATALOG for unit in units)
 SYSTEMCTL_ARGS = ("systemctl", "show", "--no-pager",
                   "--property=Id,LoadState,ActiveState,SubState", *UNITS)
 DETAIL_LIMIT = 300
+
+
+class NamespaceState(str, Enum):
+    """Only two readable valid namespace identities permit a comparison."""
+
+    SAME = "same"
+    DIFFERENT = "different"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class NetworkNamespaceIdentity:
+    """Retain PID and available identities for later opening/closing observations."""
+
+    state: NamespaceState
+    main_pid: int | None = None
+    current_namespace: str | None = None
+    fail2ban_namespace: str | None = None
+
+
+def get_fail2ban_namespace() -> NetworkNamespaceIdentity:
+    """Compare current and running Fail2Ban namespaces using only systemd/proc reads."""
+    result = run_host_command(
+        ["systemctl", "show", "--property=MainPID", "--value", "fail2ban.service"],
+        timeout=8, sudo=False)
+    value = result.stdout.removesuffix("\n")
+    if result.failure or not re.fullmatch(r"[1-9][0-9]{0,9}", value) or int(value) > 2147483647:
+        return NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)
+    pid = int(value)
+    identities = []
+    for path in ("/proc/self/ns/net", f"/proc/{pid}/ns/net"):
+        try:
+            identity = os.readlink(path)
+        except OSError:
+            break
+        if not re.fullmatch(r"net:\[[1-9][0-9]{0,19}\]", identity):
+            break
+        identities.append(identity)
+    if len(identities) != 2:
+        return NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE, pid,
+                                        identities[0] if identities else None)
+    current, daemon = identities
+    state = NamespaceState.SAME if current == daemon else NamespaceState.DIFFERENT
+    return NetworkNamespaceIdentity(state, pid, current, daemon)
 
 
 @dataclass(frozen=True)
