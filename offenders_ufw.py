@@ -92,8 +92,14 @@ def _literal(value: str, limit: int) -> bool:
 
 
 def _profile(value: str) -> bool:
-    """Use UFW's 64-character non-port identity bound without ambiguous spaces."""
-    return len(value) <= 64 and PROFILE.fullmatch(value) is not None and value != 'all' and not value.isdecimal()
+    """Bound identities and exclude names indistinguishable from status scope."""
+    if len(value) > 64 or not PROFILE.fullmatch(value) or value in ('all', 'Anywhere') or value.isdecimal():
+        return False
+    try:
+        ipaddress.ip_network(value.split(' ', 1)[0], strict=False)
+    except ValueError:
+        return True
+    return False
 
 
 def _tokens(lines: Sequence[str]) -> list[list[str]]:
@@ -180,7 +186,7 @@ def _status_rule(destination: str, source: str, target: str, direction: str, com
         else:
             parts = scope.split(' ', 1)
             try:
-                _network(parts[0], version)
+                ipaddress.ip_network(parts[0], strict=False)
                 scope, application = parts[0], parts[1] if len(parts) == 2 else ''
             except ValueError:
                 application, scope = scope, 'any'

@@ -331,6 +331,8 @@ this backend has no UI, ordinary Report, export or full race-bracket caller.
 1.0.2/1.1.0 conditional UFW rule path, with `prepend`, `deny`/`reject`, a numeric
 destination (or `any`), and an empty or bounded application-profile identity
 (up to 64 characters, including numeric-leading names but excluding bare ports).
+Profiles named `Anywhere` or starting with a parseable IP address are unsupported:
+their status column cannot distinguish a profile from a numeric destination.
 It consumes foundation runtime properties without executing the action text.
 The resolved rule lines retain stock quoting; shell token equality alone cannot
 establish compatibility when a literal field becomes an unquoted operator.

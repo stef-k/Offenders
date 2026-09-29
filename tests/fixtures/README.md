@@ -126,6 +126,8 @@ An absent documentation host produced missing evidence. UFW's source in the
 installed package (`backend_iptables.py`, `get_status`) confirms this frontend
 projection, including numeric destinations and application names; its
 `applications.py` establishes the 64-character, non-port profile identity bound.
+Legal profile names that look like numeric destinations or the status label
+`Anywhere` are conservatively unsupported because numbered status is ambiguous.
 Live rules
 use exact `ufw-user-input`/`ufw6-user-input` chains and escaped quoted
 `dapp_Evidence%20App` markers. The user-facing comment appears in status only.

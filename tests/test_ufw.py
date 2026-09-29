@@ -56,6 +56,8 @@ class UfwTests(unittest.TestCase):
                        {'actionban': STOCK.replace('else', 'else; other')},
                        {'add': 'insert 1'}, {'blocktype': 'allow'}, {'destination': 'example.org'},
                        {'application': 'app; other'}, {'application': 'all'}, {'application': '22'},
+                       {'application': 'Anywhere'}, {'application': '198.51.100.10'},
+                       {'application': '1.2.3.4 App'},
                        {'application': 'A' * 65}, {'comment': 'custom <failures>'},
                        {'comment': 'literal $(id)'}, {'actionban': STOCK.replace('from <ip>', 'from any')},
                        {'actionban': STOCK.replace('fi', 'fi\nother', 1)}]:
