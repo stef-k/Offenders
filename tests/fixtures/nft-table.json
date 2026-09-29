@@ -1,0 +1,125 @@
+{
+  "nftables": [
+    {
+      "metainfo": {
+        "version": "1.0.9",
+        "release_name": "Old Doc Yak #3",
+        "json_schema_version": 1
+      }
+    },
+    {
+      "table": {
+        "family": "inet",
+        "name": "evidence",
+        "handle": 1
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "banned",
+        "table": "evidence",
+        "type": "ipv4_addr",
+        "handle": 2,
+        "elem": [
+          "192.0.2.1"
+        ]
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "table": "evidence",
+        "name": "banned6",
+        "type": "ipv6_addr",
+        "elem": [
+          "2001:db8::1"
+        ]
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "evidence",
+        "name": "input",
+        "handle": 1,
+        "type": "filter",
+        "hook": "input",
+        "prio": -1,
+        "policy": "accept"
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "evidence",
+        "chain": "input",
+        "handle": 6,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "tcp",
+                  "field": "dport"
+                }
+              },
+              "right": {
+                "set": [
+                  22,
+                  80
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": "@banned"
+            }
+          },
+          {
+            "reject": {
+              "type": "icmp",
+              "expr": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "evidence",
+        "chain": "input",
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip6",
+                  "field": "saddr"
+                }
+              },
+              "right": "@banned6"
+            }
+          },
+          {
+            "reject": {
+              "type": "icmpv6",
+              "expr": 4
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
