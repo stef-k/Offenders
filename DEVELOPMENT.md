@@ -264,6 +264,34 @@ These seams have no dashboard/report caller and perform no verification bracket
 or UI orchestration. Fixture provenance and upstream limits are recorded in
 [tests/fixtures/README.md](tests/fixtures/README.md).
 
+### Native nftables direct evidence
+
+`offenders_nftables.classify_nft_action` consumes normalized runtime properties
+from the foundation. It requires the bounded stock effective `actionban` shape,
+including upstream's escaped braces, and resolves static properties with the
+foundation's IPv6 precedence. Only known nft executable spellings, `inet`/`ip`/`ip6`
+tables, filter chains, ordinary filter hooks, and terminal drop/reject syntax
+qualify. Unresolved/unsafe properties raise `Fail2BanParseError`; custom or compound
+action shapes return unsupported (`None`). No action program is executed.
+
+`read_nft_tables` takes the supported descriptors and reads each unique validated
+table once using only `sudo -n nft --json --numeric list table FAMILY TABLE`
+through the eight-second host-command seam. The entire batch is rejected above
+32 tables; each stdout has a 4 MiB parser/retention ceiling after command capture.
+There are no whole-ruleset reads or fallback commands. Failed reads, including
+an absent table's nonzero command exit, are unverifiable; localized stderr never
+proves absence. JSON snapshots retain only normalized facts, without raw dumps.
+
+`verify_nft_ban` checks table presence/dormancy, simple exact IP set membership,
+address type, active base/filter hook attachment, and a positive source-set match
+with the configured drop/reject verdict in the same rule. The supported JSON
+subset covers stock multiport/allports matches and optional counters. Prefix,
+interval, timed-element and unfamiliar rule forms remain unverifiable. Reasons
+are bounded identities rather than command output. These are direct backend
+facts: later integration must establish namespace identity and opening/closing
+ban/action stability before publishing confirmed/missing outcomes. There is no
+dashboard, ordinary Report, export, or full race-bracket caller in this child.
+
 ## Packaging and distribution
 
 `pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static

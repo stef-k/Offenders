@@ -53,6 +53,24 @@ properties for Offenders to resolve. These source comparisons establish the
 shared read/normalization contract, not backend classification, firewall state,
 live sudo permissions or expanded distro support.
 
+## Native nftables JSON
+
+`nft-table.json` adapts a scoped `nft --json --numeric list table inet evidence`
+read from nftables 1.0.9 in a disposable user/network namespace. The IPv4 multiport
+rule, embedded simple set elements, numeric reject reply and base-chain fields
+were captured directly; the IPv6 set/rule is a synthetic extension of that same
+schema. All addresses are RFC documentation addresses. It is not a production
+ruleset or a capture from the supported Ubuntu 24.04 host baseline.
+
+The parser subset follows the installed `libnftables-json(5)` schema and upstream
+[nftables JSON documentation](https://netfilter.org/projects/nftables/manpage.html#lbBO).
+The action template and static properties were compared using upstream Fail2Ban
+[nftables.conf 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/nftables.conf)
+and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/nftables.conf);
+their relevant semantics are identical. Inline mutations cover absent objects,
+unsafe/custom actions, malformed/oversized evidence, and unsupported forms without
+adding a fixture for every failure. Ordinary tests never run nft or require root.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based

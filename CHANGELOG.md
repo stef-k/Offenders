@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add the native nftables enforcement backend: stock-compatible runtime action
+  classification, shared scoped read-only table snapshots, and conservative
+  IPv4/IPv6 direct evidence. UI and full stability checks remain separate (#110).
+
 ## 0.3.1 - 2026-09-29
 
 - Harden empty, invalid and stale TUI selections and result-dependent actions;
