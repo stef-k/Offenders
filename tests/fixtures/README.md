@@ -76,6 +76,31 @@ rule with a zero counter and terminal drop, and a missing IPv4 host member. The
 installed nftables 1.0.9 tool emitted incomplete JSON for a dormant table; that
 read is conservatively unverifiable, without salvaging a partial snapshot.
 
+## Iptables compatibility save output
+
+`tests/test_iptables.py` uses small synthetic IPv4/IPv6 save snapshots with RFC
+documentation addresses, chain declarations, stock multiport parent jumps,
+source-only REJECT/DROP rules and RETURN tails. An unrelated `*nat` section
+proves that only `*filter` facts qualify. These are not production-host captures.
+
+The stock action template, locking flag, chain/name properties and IPv6 overrides
+were compared in upstream Fail2Ban
+[iptables.conf 1.0.2](https://github.com/fail2ban/fail2ban/blob/1.0.2/config/action.d/iptables.conf)
+and [1.1.0](https://github.com/fail2ban/fail2ban/blob/1.1.0/config/action.d/iptables.conf);
+the relevant definitions are identical. The structural save format and terminal
+REJECT replies follow the iptables 1.8.10 `iptables-save(8)` and
+`iptables-extensions(8)` interfaces. Inline cases cover malformed framing,
+tokenization, absent direct facts, unsupported rules and exact read argv without
+a backend-executable-by-parser-case matrix. Ordinary tests run no firewall tools.
+
+Disposable user/network namespaces with iptables 1.8.10 also qualified IPv4 and
+IPv6 `iptables-nft-save`/`ip6tables-nft-save` output through the pure parser and
+verifier for present and absent documentation hosts. External fixture setup
+created the synthetic rules; the Offenders reader contains no mutation path.
+The no-argument IPv4 legacy save read could not be qualified in this environment:
+`/proc/net/ip_tables_names` was permission denied. This is local parser evidence,
+not supported-host, live sudo or namespace/race-bracket qualification.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based
