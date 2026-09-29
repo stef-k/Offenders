@@ -226,6 +226,44 @@ mutation is confined to app-owned GeoIP lifecycle state; validation may create
 private temporary files and cleans them after success or failure. Production
 Fail2Ban changes remain outside Offenders.
 
+### Runtime action and namespace foundation
+
+`offenders_fail2ban.get_jail_core_status` reads only `status <jail>` and returns
+the existing `JailStatus`; report acquisition still adds its best-effort numeric
+settings. Explicit callers can use `get_jail_actions`, `get_action_properties`
+and `get_action_property` for read-only runtime facts. These use the existing
+eight-second, non-interactive sudo runner. Action identities are validated before
+reuse; discovered property names never grant query permission. The finite
+`ACTION_PROPERTIES` whitelist covers stock 1.0.2/1.1.0 actionban/static identifiers,
+IPv6 overrides, and UFW rule/kill scope, including iptables' `lockingopt` reference.
+Action text has a 64 KiB parser/retention bound and each jail has at most 32 actions;
+limits reject evidence rather than silently truncating it.
+
+`resolve_action_property` accepts normalized property mappings and resolves only
+known static `<property>` references, preferring `?family=inet6` for IPv6. Its
+eight-property path and 64 KiB expansion limits reject cycles, missing references
+and unsupported interpolation via `Fail2BanParseError`. Dynamic ticket tags such
+as `<ip>` and `<failures>` are outside this resolver. Keep actionban and dynamic
+comment text as raw facts for later consumers; never execute or shell-expand them.
+Upstream's ActionReader resolves definition-only tags before sending runtime
+properties, including UFW's nested kill selector. Runtime reads remain the authority,
+with unfamiliar/unresolved facts unavailable for a supported claim.
+
+`action_fingerprint(jail, actions)` hashes action identities and the selected
+allowlisted, normalized property values in canonical sorted order. Callers must
+supply the same relevant property selection in both observations, including
+IPv6 overrides; diagnostic or transient fields are rejected. It detects changes,
+without classifying actions or acquiring firewall state.
+
+`offenders_host.get_fail2ban_namespace` reads MainPID through non-sudo
+`systemctl show --property=MainPID --value fail2ban.service`, then reads the
+`/proc/self/ns/net` and `/proc/<pid>/ns/net` symlink identities. Its frozen result
+retains PID and available identities with `same`, `different` or `unavailable`.
+Command/PID/proc failures produce `unavailable`; no namespace is entered or changed.
+These seams have no dashboard/report caller and perform no verification bracket
+or UI orchestration. Fixture provenance and upstream limits are recorded in
+[tests/fixtures/README.md](tests/fixtures/README.md).
+
 ## Packaging and distribution
 
 `pyproject.toml` uses PEP 621 metadata and the setuptools backend. Static

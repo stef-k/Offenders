@@ -1,0 +1,2 @@
+The jail sshd action guard-main has the following properties:
+actionban, addr_set, addr_set?family=inet6, name, timeout

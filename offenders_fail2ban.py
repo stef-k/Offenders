@@ -1,10 +1,13 @@
 """Bound read-only Fail2Ban commands and parse structured daemon status."""
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import json
 import math
 import re
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import List, Optional, Tuple
@@ -75,7 +78,7 @@ class Fail2BanCommandError(RuntimeError):
 
 
 class Fail2BanParseError(ValueError):
-    """Successful command output does not satisfy the required status contract."""
+    """Runtime output or static resolution cannot satisfy the required contract."""
 
 
 @dataclass(frozen=True)
@@ -156,7 +159,7 @@ def get_jail_list() -> List[str]:
 
 def get_jail_status(jail: str) -> JailStatus:
     """Collect core status and best-effort 1.0.2 numeric settings, read-only."""
-    status = parse_jail_status(_run(["fail2ban-client", "status", jail]), jail)
+    status = get_jail_core_status(jail)
     settings = {}
     errors = {}
     for name in ("bantime", "findtime", "maxretry"):
@@ -168,6 +171,182 @@ def get_jail_status(jail: str) -> JailStatus:
         except (Fail2BanCommandError, Fail2BanParseError) as error:
             errors[name] = error
     return replace(status, **settings, setting_errors=errors)
+
+
+def get_jail_core_status(jail: str) -> JailStatus:
+    """Read fresh counters/current bans only, preserving command and parse errors."""
+    return parse_jail_status(_run(["fail2ban-client", "status", jail]), jail)
+
+
+# Parser/retention bounds apply after the existing runner captures stdout.
+ACTION_TEXT_LIMIT = 65536
+ACTION_COUNT_LIMIT = 32
+ACTION_RESOLUTION_DEPTH = 8
+ACTION_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}")
+# Stock 1.0.2/1.1.0 actionban/static identifiers and UFW rule/kill scope.
+# lockingopt is referenced by the stock iptables value. Definition-only tags
+# (including UFW's nested kill selector) are resolved by upstream ActionReader.
+ACTION_BASE_PROPERTIES = frozenset({
+    "actionban", "name", "nftables", "table_family", "table", "chain",
+    "chain_type", "chain_hook", "addr_set", "blocktype", "iptables", "lockingopt",
+    "add", "destination", "application", "comment", "kill-mode", "kill",
+})
+# Only these stock properties require conditional IPv6 reads.
+ACTION_PROPERTIES = ACTION_BASE_PROPERTIES | frozenset({
+    "addr_set?family=inet6", "blocktype?family=inet6", "iptables?family=inet6",
+})
+
+
+def _validate_action(action: str) -> None:
+    """Reject unsafe identities before they can enter another sudo argv."""
+    if not ACTION_ID.fullmatch(action):
+        raise Fail2BanParseError("Unsupported Fail2Ban action identity")
+
+
+def _validate_action_property(name: str) -> None:
+    """Returned property names never authorize arbitrary daemon attribute reads."""
+    if name not in ACTION_PROPERTIES:
+        raise Fail2BanParseError("Unsupported Fail2Ban action property")
+
+
+def _bounded_action_text(value: str) -> str:
+    """Reject oversized/control-bearing evidence without retaining a truncation."""
+    if len(value) > ACTION_TEXT_LIMIT or len(value.encode("utf-8")) > ACTION_TEXT_LIMIT or any(
+        ord(char) < 32 and char not in "\n\t" or ord(char) == 127 for char in value
+    ):
+        raise Fail2BanParseError("Invalid or oversized Fail2Ban action text")
+    return value
+
+
+def _parse_action_list(output: str, header: str, empty: str) -> tuple[str, ...]:
+    """Parse the identical upstream comma-list envelope with exact identities."""
+    value = _bounded_action_text(output).removesuffix("\n")
+    if value == empty:
+        return ()
+    lines = value.split("\n")
+    if len(lines) != 2 or lines[0] != header or not lines[1]:
+        raise Fail2BanParseError("Invalid Fail2Ban action list header or entries")
+    names = tuple(lines[1].split(", "))
+    if len(set(names)) != len(names):
+        raise Fail2BanParseError("Duplicate Fail2Ban action list entry")
+    return names
+
+
+def parse_jail_actions(output: str, jail: str) -> tuple[str, ...]:
+    """Accept zero/one/multiple actions; malformed output never means empty."""
+    actions = _parse_action_list(output, f"The jail {jail} has the following actions:",
+                                 f"No actions for jail {jail}")
+    if len(actions) > ACTION_COUNT_LIMIT:
+        raise Fail2BanParseError("Too many Fail2Ban actions")
+    for action in actions:
+        _validate_action(action)
+    return actions
+
+
+def parse_action_properties(output: str, jail: str, action: str) -> tuple[str, ...]:
+    """Retain public names as discovery facts, not permission to query them."""
+    _validate_action(action)
+    names = _parse_action_list(
+        output, f"The jail {jail} action {action} has the following properties:",
+        f"No properties for jail {jail} action {action}")
+    if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/?=+-]{0,127}", name)
+           for name in names):
+        raise Fail2BanParseError("Invalid Fail2Ban public property name")
+    return names
+
+
+def parse_action_property(output: str) -> str:
+    """Raw values have no identity envelope; remove only the client's final LF."""
+    return _bounded_action_text(output).removesuffix("\n")
+
+
+def get_jail_actions(jail: str) -> tuple[str, ...]:
+    """Discover bounded action identifiers through the existing sudo read seam."""
+    return parse_jail_actions(_run(["fail2ban-client", "get", jail, "actions"]), jail)
+
+
+def get_action_properties(jail: str, action: str) -> tuple[str, ...]:
+    """Read public property names only after validating the action selector."""
+    _validate_action(action)
+    return parse_action_properties(
+        _run(["fail2ban-client", "get", jail, "actionproperties", action]), jail, action)
+
+
+def get_action_property(jail: str, action: str, property_name: str) -> str:
+    """Read one finite allowlisted property; never execute its value."""
+    _validate_action(action)
+    _validate_action_property(property_name)
+    return parse_action_property(
+        _run(["fail2ban-client", "get", jail, "action", action, property_name]))
+
+
+def resolve_action_property(properties: Mapping[str, str], name: str, *, family: str = "inet4") -> str:
+    """Resolve bounded static tags with IPv6 precedence, or raise parse failure.
+
+    Input values are already normalized by parse_action_property. Dynamic ticket
+    tags such as <ip>/<failures> remain unsupported here; actionban is retained as
+    raw data for later classifiers, rather than shell-expanded or executed.
+    """
+    if family not in ("inet4", "inet6") or name not in ACTION_BASE_PROPERTIES:
+        raise Fail2BanParseError("Unsupported action resolution property/family")
+    resolved = {}
+
+    def resolve(key: str, path: tuple[str, ...]) -> str:
+        """Bound each reference path and the accumulated expansion size."""
+        if key not in ACTION_BASE_PROPERTIES or key in path or len(path) >= ACTION_RESOLUTION_DEPTH:
+            raise Fail2BanParseError("Unsupported, cyclic or too deep action reference")
+        # Cache at the current depth so repeated empty references cannot cause
+        # exponential work, without bypassing the remaining recursion budget.
+        cache_key = (key, len(path))
+        if cache_key in resolved:
+            return resolved[cache_key]
+        selected = f"{key}?family=inet6" if family == "inet6" and f"{key}?family=inet6" in properties else key
+        if selected not in properties:
+            raise Fail2BanParseError("Unresolved action property reference")
+        value = _bounded_action_text(properties[selected])
+        if "%(" in value:
+            raise Fail2BanParseError("Unsupported action interpolation")
+        parts = []
+        end = size = 0
+        for match in re.finditer(r"<([^<>]+)>", value):
+            literal = value[end:match.start()]
+            replacement = resolve(match[1], (*path, key))
+            size += len(literal.encode("utf-8")) + len(replacement.encode("utf-8"))
+            if size > ACTION_TEXT_LIMIT:
+                raise Fail2BanParseError("Action property expansion exceeds bound")
+            parts.extend((literal, replacement))
+            end = match.end()
+        size += len(value[end:].encode("utf-8"))
+        if size > ACTION_TEXT_LIMIT:
+            raise Fail2BanParseError("Action property expansion exceeds bound")
+        parts.append(value[end:])
+        result = "".join(parts)
+        if "<" in result or ">" in result:
+            raise Fail2BanParseError("Unresolved or malformed action reference")
+        resolved[cache_key] = result
+        return result
+
+    return resolve(name, ())
+
+
+def action_fingerprint(jail: str, actions: Mapping[str, Mapping[str, str]]) -> str:
+    """Hash exact normalized relevant facts; mapping/list order is incidental.
+
+    Include discovered action identities even when no relevant property exists.
+    Callers supply only the allowlisted facts their verifier uses, consistently
+    across both observations. No diagnostics, timestamps or transient state enter.
+    """
+    if len(actions) > ACTION_COUNT_LIMIT:
+        raise Fail2BanParseError("Too many Fail2Ban actions")
+    canonical = []
+    for action, properties in sorted(actions.items()):
+        _validate_action(action)
+        for name, value in properties.items():
+            _validate_action_property(name)
+            _bounded_action_text(value)
+        canonical.append((action, sorted(properties.items())))
+    value = json.dumps([jail, canonical], ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
 
 
 # Bound source evidence independently of the subprocess timeout.
