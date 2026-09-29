@@ -103,7 +103,7 @@ not supported-host, live sudo or namespace/race-bracket qualification.
 
 ## UFW status and live save output
 
-`ufw-status.txt`, `ufw-v4.save` and `ufw-v6.save` are actual captures from a
+`ufw-status.txt`, `ufw-v4.save` and `ufw-v6.save` are captures from a
 disposable Ubuntu 24.04 container using UFW `0.36.2-6` and iptables
 `1.8.10-3ubuntu2` (the system nft compatibility view). Setup enabled UFW and added
 only documentation-address incoming rules: IPv4 REJECT, IPv4 subnet destination,
@@ -112,6 +112,8 @@ destination. `Evidence App` is a disposable profile with TCP 22/2222 and UDP 53.
 The profile spans multiple live rules but one numbered frontend row. Capture
 commands were precisely `ufw status numbered`, `iptables-save` and
 `ip6tables-save`, with no save arguments. No production ruleset was accessed.
+Status padding at line ends and its final blank line were removed for Git diff
+checks; rule content and column spacing are otherwise unchanged.
 
 Qualification used a non-root disposable user with narrowly enumerated sudo
 grants. `sudo -n ufw status numbered` produced C/English numbered headers, rows
