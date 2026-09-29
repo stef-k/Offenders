@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "offenders"
-version = "0.3.0"
+version = "0.3.1"
 description = "A terminal investigation and diagnostics tool for Fail2Ban"
 readme = "README.md"
 requires-python = ">=3.12"
