@@ -55,14 +55,24 @@ class UfwTests(unittest.TestCase):
                        {'actionban': STOCK.replace('ufw <add>', 'wrapper ufw <add>')},
                        {'actionban': STOCK.replace('else', 'else; other')},
                        {'add': 'insert 1'}, {'blocktype': 'allow'}, {'destination': 'example.org'},
-                       {'application': 'app; other'}, {'comment': 'custom <failures>'},
+                       {'application': 'app; other'}, {'application': 'all'}, {'application': '22'},
+                       {'application': 'A' * 65}, {'comment': 'custom <failures>'},
                        {'comment': 'literal $(id)'}, {'actionban': STOCK.replace('from <ip>', 'from any')},
                        {'actionban': STOCK.replace('fi', 'fi\nother', 1)}]:
             with self.subTest(change=change):
                 self.assertIsNone(ufw.classify_ufw_action({**PROPERTIES, **change}))
-        for change in [{'destination': '<unknown>'}, {'comment': '<matches>'}, {'application': '<application>'}]:
+        for change in [{'destination': '<unknown>'}, {'comment': '<matches>'}, {'comment': 'banned <ip>'},
+                       {'application': '<ip>'}, {'application': '<failures>'}, {'name': '<ip>'},
+                       {'application': '<application>'}]:
             with self.subTest(change=change), self.assertRaises(Fail2BanParseError):
                 ufw.classify_ufw_action({**PROPERTIES, **change})
+
+    def test_stock_quote_boundaries_are_preserved(self):
+        """An unquoted static metacharacter changes shell semantics and is unsupported."""
+        props = {**PROPERTIES, 'comment': ';'}
+        self.assertIsNotNone(ufw.classify_ufw_action(props))
+        unquoted = STOCK.replace('comment "<comment>"', 'comment <comment>')
+        self.assertIsNone(ufw.classify_ufw_action({**props, 'actionban': unquoted}))
 
     def test_ipv4_ipv6_deny_reject_destination_and_application(self):
         """Real captured rows and rules prove both families and supported scopes."""
@@ -77,6 +87,11 @@ class UfwTests(unittest.TestCase):
                 result = self.evidence(ip, action)
                 self.assertEqual((result.outcome, result.reason, result.managed_rule, result.live_rule),
                                  ('confirmed', 'entry-observed', True, True))
+        # UFW permits a numeric-leading profile when it is not a bare port.
+        numeric = ufw.classify_ufw_action({**PROPERTIES, 'blocktype': 'deny', 'application': '3App'})
+        self.assertEqual(self.evidence('192.0.2.2', numeric,
+                         status=self.status_text.replace('Evidence App', '3App'),
+                         live=self.save_text[4].replace('dapp_Evidence%20App', 'dapp_3App')).outcome, 'confirmed')
 
     def test_inactive_missing_frontend_and_missing_live_are_distinct(self):
         """Neither one evidence layer nor installed-but-inactive UFW can confirm."""
@@ -128,6 +143,7 @@ class UfwTests(unittest.TestCase):
         for text in ['Estado: activo\n', self.status_text.replace('Action', 'Acción'),
                      self.status_text.replace('[ 1]', '[ 2]', 1), self.status_text + 'garbage\n',
                      self.status_text.replace('REJECT IN', 'MYSTERY IN'),
+                     'Status: active\n\nTo Action From\n-- ------ ----\n[ 1] \t   DENY IN     192.0.2.1\n',
                      'x' * (ufw.UFW_TEXT_LIMIT + 1), 'é' * (ufw.UFW_TEXT_LIMIT // 2 + 1)]:
             with self.subTest(text=text[:50]):
                 self.assertEqual(self.evidence(status=text).outcome, 'unverifiable')
@@ -139,6 +155,9 @@ class UfwTests(unittest.TestCase):
                      self.save_text[4].replace('-s 192.0.2.1/32', '-s 192.0.2.1/32 -i eth0')]:
             with self.subTest(text=text[:50]):
                 self.assertEqual(self.evidence(live=text).outcome, 'unverifiable')
+        app = ufw.classify_ufw_action({**PROPERTIES, 'blocktype': 'deny', 'application': 'Evidence App'})
+        invalid_ports = self.save_text[4].replace('--dports 22,2222', '--dports 99999').replace('--dport 53', '--dport 99999')
+        self.assertEqual(self.evidence('192.0.2.2', app, live=invalid_ports).outcome, 'unverifiable')
 
     def test_fixed_reads_relevant_family_deduplication_and_failures(self):
         """Only status numbered and bare relevant-family save binaries can reach sudo."""

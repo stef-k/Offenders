@@ -12,7 +12,7 @@ from offenders_iptables import CHAIN_ID, IPTABLES_TEXT_LIMIT, REJECT_REPLIES
 
 # Bounds apply after the existing finite-deadline runner captures stdout.
 UFW_TEXT_LIMIT = IPTABLES_TEXT_LIMIT
-PROFILE = re.compile(r'[A-Za-z][A-Za-z0-9_.+-]*(?: [A-Za-z0-9_.+-]+)*')
+PROFILE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.+-]*(?: [A-Za-z0-9_.+-]+)*')
 SAVE_BINARIES = {4: 'iptables-save', 6: 'ip6tables-save'}
 USER_CHAINS = {4: 'ufw-user-input', 6: 'ufw6-user-input'}
 IP_TAG = 'OFFENDERS_IP'
@@ -91,6 +91,11 @@ def _literal(value: str, limit: int) -> bool:
         char.isprintable() and char not in '"\\$`<>' for char in value)
 
 
+def _profile(value: str) -> bool:
+    """Use UFW's 64-character non-port identity bound without ambiguous spaces."""
+    return len(value) <= 64 and PROFILE.fullmatch(value) is not None and value != 'all' and not value.isdecimal()
+
+
 def _tokens(lines: Sequence[str]) -> list[list[str]]:
     """Tokenize each stock shell line for comparison only, never evaluation."""
     return [shlex.split(line.strip()) for line in lines if line.strip()]
@@ -109,8 +114,9 @@ def classify_ufw_action(properties: Mapping[str, str], *, family: str = 'inet4')
         return None
     if any(IP_TAG in value or COUNT_TAG in value for value in properties.values()):
         return None
-    masked = {key: value.replace('<ip>', IP_TAG).replace('<failures>', COUNT_TAG)
-              for key, value in properties.items()}
+    masked = dict(properties)
+    if 'comment' in masked:
+        masked['comment'] = masked['comment'].replace('<failures>', COUNT_TAG)
     values = {key: resolve_action_property(masked, key, family=family)
               for key in ('add', 'blocktype', 'destination', 'application', 'comment', 'name')}
     version = 6 if family == 'inet6' else 4
@@ -121,7 +127,7 @@ def classify_ufw_action(properties: Mapping[str, str], *, family: str = 'inet4')
     if values['add'] != 'prepend' or values['blocktype'] not in ('deny', 'reject'):
         return None
     app, comment, name = values['application'], values['comment'], values['name']
-    if not ACTION_ID.fullmatch(name) or not _literal(app, 128) or app and not PROFILE.fullmatch(app):
+    if not ACTION_ID.fullmatch(name) or app and not _profile(app):
         return None
     dynamic = COUNT_TAG in comment
     if not _literal(comment, 256) or dynamic and comment != STOCK_COMMENT + name:
@@ -133,15 +139,20 @@ def classify_ufw_action(properties: Mapping[str, str], *, family: str = 'inet4')
                 f'{rule} app "{app}" comment "{comment}"', 'else', f'{rule} comment "{comment}"', 'fi']
     # Runtime ActionReader may have removed definition-only kill/kill-mode keys.
     tail = '\n'.join(lines[6:])
-    kill_facts = {**masked, 'kill': masked.get('kill', ''), 'kill-mode': masked.get('kill-mode', '')}
+    kill_facts = {**masked, 'kill': masked.get('kill', '').replace('<ip>', IP_TAG),
+                  'kill-mode': masked.get('kill-mode', '')}
     kill = resolve_action_property(kill_facts, 'kill', family=family)
     mode = resolve_action_property(kill_facts, 'kill-mode', family=family)
     if tail == '<kill>':
+        if 'kill' not in properties:
+            raise Fail2BanParseError('Unresolved UFW kill reference')
         tail = kill
     else:
         tail = tail.replace('<ip>', IP_TAG)
     try:
-        if _tokens(command.splitlines()) != _tokens(expected):
+        # Preserve stock quoting: token equality alone would turn an unquoted
+        # static comment containing ';' into a supported shell separator.
+        if [line.strip() for line in command.splitlines()] != expected:
             return None
         if tail and _tokens(tail.splitlines()) not in (
             _tokens(kill.splitlines()), [["ss", "-K", "dst", f'[{IP_TAG}]']],
@@ -166,12 +177,14 @@ def _status_rule(destination: str, source: str, target: str, direction: str, com
         application = ''
         if scope == 'Anywhere':
             scope = 'any'
-        elif scope.split(' ', 1)[0][0].isdigit() or ':' in scope.split(' ', 1)[0]:
-            parts = scope.split(' ', 1)
-            scope, application = parts[0], parts[1] if len(parts) == 2 else ''
         else:
-            application, scope = scope, 'any'
-        if application and (not PROFILE.fullmatch(application) or len(application) > 128):
+            parts = scope.split(' ', 1)
+            try:
+                _network(parts[0], version)
+                scope, application = parts[0], parts[1] if len(parts) == 2 else ''
+            except ValueError:
+                application, scope = scope, 'any'
+        if application and not _profile(application):
             return UfwRule(supported=False)
         return UfwRule(address.network_address.compressed, _network(scope, version), application, target, comment)
     except ValueError:
@@ -198,7 +211,7 @@ def parse_ufw_status(output: str) -> UfwStatus:
     rules = []
     for number, line in enumerate(lines[3:], 1):
         match = re.fullmatch(r'\[\s*(\d+)\] (.+?)\s+(ALLOW|DENY|REJECT|LIMIT) (IN|OUT|FWD)\s+(.+?)(?:\s+# (.*))?', line)
-        if not match or int(match[1]) != number:
+        if not match or int(match[1]) != number or not match[2].strip() or not match[5].strip():
             return UfwStatus(reason='unrecognized-status-output')
         rules.append(_status_rule(match[2].strip(), match[5].strip(), match[3], match[4], match[6] or ''))
     return UfwStatus(True, tuple(rules))
@@ -238,11 +251,14 @@ def _live_rule(tokens: list[str], version: int) -> UfwRule:
         if not marker:
             return UfwRule(supported=False)
         application = marker[1].replace('%20', ' ')
-        if not PROFILE.fullmatch(application) or len(application) > 128 or 'comment' not in modules:
+        if not _profile(application) or 'comment' not in modules:
             return UfwRule(supported=False)
     ports = fields.get('--dport', fields.get('--dports', ''))
     if application:
         if fields.get('-p') not in ('tcp', 'udp') or not re.fullmatch(r'\d+(?::\d+)?(?:,\d+(?::\d+)?)*', ports):
+            return UfwRule(supported=False)
+        if '--dport' in fields and '--dports' in fields or any(
+            not 1 <= int(port) <= 65535 for port in re.split('[:,]', ports)):
             return UfwRule(supported=False)
     elif '-p' in fields or ports or modules:
         return UfwRule(supported=False)
