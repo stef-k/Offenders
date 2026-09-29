@@ -93,6 +93,14 @@ REJECT replies follow the iptables 1.8.10 `iptables-save(8)` and
 tokenization, absent direct facts, unsupported rules and exact read argv without
 a backend-executable-by-parser-case matrix. Ordinary tests run no firewall tools.
 
+Disposable user/network namespaces with iptables 1.8.10 also qualified IPv4 and
+IPv6 `iptables-nft-save`/`ip6tables-nft-save` output through the pure parser and
+verifier for present and absent documentation hosts. External fixture setup
+created the synthetic rules; the Offenders reader contains no mutation path.
+The no-argument IPv4 legacy save read could not be qualified in this environment:
+`/proc/net/ip_tables_names` was permission denied. This is local parser evidence,
+not supported-host, live sudo or namespace/race-bracket qualification.
+
 ## Pattern recognition examples
 
 `tests/test_patterns.py` contains adapted, synthetic representative log lines based

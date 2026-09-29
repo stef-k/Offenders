@@ -169,7 +169,7 @@ def parse_iptables_save(output: str, save_binary: str) -> IptablesSnapshot:
         return IptablesSnapshot(save_binary, reason='evidence-limit')
     table = None
     seen = set()
-    chains = []
+    chains = set()
     rules = []
     try:
         for line in output.splitlines():
@@ -193,12 +193,12 @@ def parse_iptables_save(output: str, save_binary: str) -> IptablesSnapshot:
                     match = re.fullmatch(r':([A-Za-z0-9_][A-Za-z0-9_.:+-]{0,127}) (?:-|ACCEPT|DROP) \[\d+:\d+\]', line)
                     if not match or match[1] in chains:
                         raise ValueError('Invalid or duplicate chain declaration')
-                    chains.append(match[1])
+                    chains.add(match[1])
                 else:
                     rules.append(_parse_rule(line, SAVE_VERSIONS[save_binary]))
         if table is not None or any(rule.chain not in chains for rule in rules):
             raise ValueError('Incomplete filter evidence')
-        return IptablesSnapshot(save_binary, 'filter' in seen, tuple(chains), tuple(rules))
+        return IptablesSnapshot(save_binary, 'filter' in seen, tuple(sorted(chains)), tuple(rules))
     except ValueError:
         return IptablesSnapshot(save_binary, reason='unrecognized-output')
 

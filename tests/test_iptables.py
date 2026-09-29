@@ -60,9 +60,7 @@ class IptablesTests(unittest.TestCase):
         output = save_text()
         cases = [
             (output.split('*filter')[0], 'filter-table-absent'),
-            (output.replace(':f2b-guard - [0:0]\n', '').replace('-A f2b-guard -s 192.0.2.1/32 -j REJECT --reject-with icmp-port-unreachable\n', '')
-             .replace('-A f2b-guard -j RETURN\n', '').replace('-A INPUT -j f2b-guard\n', '')
-             .replace('-A INPUT -p tcp -m multiport --dports 22,2222 -j f2b-guard\n', ''), 'ban-chain-absent'),
+            ('*filter\n:INPUT ACCEPT [0:0]\nCOMMIT\n', 'ban-chain-absent'),
             ('*filter\n:f2b-guard - [0:0]\n-A f2b-guard -s 192.0.2.1 -j REJECT\nCOMMIT\n', 'parent-chain-absent'),
             (output.replace('-A INPUT -p tcp -m multiport --dports 22,2222 -j f2b-guard\n', ''), 'parent-jump-absent'),
             (save_text('192.0.2.2'), 'ban-entry-absent'),
@@ -89,6 +87,13 @@ class IptablesTests(unittest.TestCase):
                 self.assertEqual(self.evidence(save_text().replace('-s 192.0.2.1/32', extra)).outcome,
                                  'unverifiable')
         self.assertEqual(self.evidence(save_text(target='custom')).reason, 'blocking-target-absent')
+
+    def test_quoted_comments_are_inert_and_aliases_normalize(self):
+        """Quoted option-like text cannot manufacture a source or jump fact."""
+        comment = save_text().replace('-s 192.0.2.1/32', '-m comment --comment "-s 192.0.2.1"')
+        self.assertEqual(self.evidence(comment).reason, 'ban-entry-absent')
+        annotated = save_text().replace('-A f2b-guard -s', '-A f2b-guard -m comment --comment "-j" --source')
+        self.assertEqual(self.evidence(annotated.replace('-j REJECT', '--jump REJECT')).outcome, 'confirmed')
 
     def test_malformed_or_oversized_evidence_is_unverifiable(self):
         """Never salvage incomplete, ambiguous or badly quoted filter evidence."""
