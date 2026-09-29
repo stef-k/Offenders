@@ -18,6 +18,7 @@ USER_CHAINS = {4: 'ufw-user-input', 6: 'ufw6-user-input'}
 IP_TAG = 'OFFENDERS_IP'
 COUNT_TAG = 'OFFENDERS_FAILURES'
 STOCK_COMMENT = 'by Fail2Ban after ' + COUNT_TAG + ' attempts against '
+ADDED_HEADER = "Added user rules (see 'ufw status' for running firewall):"
 
 
 @dataclass(frozen=True)
@@ -47,9 +48,16 @@ class UfwRule:
 
 @dataclass(frozen=True)
 class UfwStatus:
-    """Active state and managed rows; None means state was not established."""
+    """Runtime active state only; None means state was not established."""
 
     active: bool | None = None
+    reason: str = ''
+
+
+@dataclass(frozen=True)
+class UfwManagedSnapshot:
+    """Normalized added-rule identity, independent of active and live state."""
+
     rules: tuple[UfwRule, ...] = ()
     reason: str = ''
 
@@ -92,14 +100,8 @@ def _literal(value: str, limit: int) -> bool:
 
 
 def _profile(value: str) -> bool:
-    """Bound identities and exclude names indistinguishable from status scope."""
-    if len(value) > 64 or not PROFILE.fullmatch(value) or value in ('all', 'Anywhere') or value.isdecimal():
-        return False
-    try:
-        ipaddress.ip_network(value.split(' ', 1)[0], strict=False)
-    except ValueError:
-        return True
-    return False
+    """Use bounded non-port UFW identities; the explicit app token owns scope."""
+    return len(value) <= 64 and PROFILE.fullmatch(value) is not None and value != 'all' and not value.isdecimal()
 
 
 def _tokens(lines: Sequence[str]) -> list[list[str]]:
@@ -170,33 +172,6 @@ def classify_ufw_action(properties: Mapping[str, str], *, family: str = 'inet4')
     return UfwAction(version, values['blocktype'], destination, app, comment, dynamic, bool(tail or kill or mode))
 
 
-def _status_rule(destination: str, source: str, target: str, direction: str, comment: str) -> UfwRule:
-    """Project the qualified incoming host scope; unrelated forms remain opaque."""
-    try:
-        address = ipaddress.ip_network(source, strict=False)
-        if '%' in source or address.prefixlen != address.max_prefixlen or direction != 'IN':
-            return UfwRule(supported=False)
-        version = address.version
-        scope = destination.removesuffix(' (v6)')
-        if destination.endswith(' (v6)') and version != 6:
-            raise ValueError('Mixed-family status')
-        application = ''
-        if scope == 'Anywhere':
-            scope = 'any'
-        else:
-            parts = scope.split(' ', 1)
-            try:
-                ipaddress.ip_network(parts[0], strict=False)
-                scope, application = parts[0], parts[1] if len(parts) == 2 else ''
-            except ValueError:
-                application, scope = scope, 'any'
-        if application and not _profile(application):
-            return UfwRule(supported=False)
-        return UfwRule(address.network_address.compressed, _network(scope, version), application, target, comment)
-    except ValueError:
-        return UfwRule(supported=False)
-
-
 def _bounded_output(output: str) -> bool:
     """Reject excess bytes and control text without salvaging partial evidence."""
     return len(output) <= UFW_TEXT_LIMIT and len(output.encode('utf-8')) <= UFW_TEXT_LIMIT and not any(
@@ -204,23 +179,72 @@ def _bounded_output(output: str) -> bool:
 
 
 def parse_ufw_status(output: str) -> UfwStatus:
-    """Parse only the qualified C/English UFW 0.36.2 numbered status framing."""
+    """Establish active/inactive only; rendered rows carry no rule identity."""
     if not _bounded_output(output):
         return UfwStatus(reason='evidence-limit-or-control-text')
-    lines = [line.rstrip() for line in output.splitlines() if line.strip()]
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
     if lines == ['Status: inactive']:
         return UfwStatus(False)
     if lines == ['Status: active']:
         return UfwStatus(True)
     if len(lines) < 4 or lines[0] != 'Status: active' or lines[1].split() != ['To', 'Action', 'From'] or lines[2].split() != ['--', '------', '----']:
         return UfwStatus(reason='unrecognized-status-output')
+    return UfwStatus(True)
+
+
+def _added_rule(tokens: list[str]) -> UfwRule:
+    """Project only the stock extended incoming source/destination/app/comment form."""
+    if len(tokens) < 4 or tokens[:3] not in (['ufw', 'deny', 'from'], ['ufw', 'reject', 'from']):
+        return UfwRule(supported=False)
+    source = ipaddress.ip_network(tokens[3], strict=False)
+    if '%' in tokens[3]:
+        raise ValueError('Scoped source')
+    remaining = tokens[4:]
+    explicit_to = remaining[:1] == ['to']
+    if explicit_to:
+        if len(remaining) < 2:
+            return UfwRule(supported=False)
+        destination = _network(remaining[1], source.version)
+        remaining = remaining[2:]
+    elif not remaining or remaining[:1] == ['comment']:
+        # UFW 0.36.2 removes exactly 'to any' when no destination port/app exists.
+        destination = _network('any', source.version)
+    else:
+        return UfwRule(supported=False)
+    app, comment = '', ''
+    if remaining[:1] == ['app']:
+        if not explicit_to or len(remaining) < 2 or not _profile(remaining[1]):
+            return UfwRule(supported=False)
+        app, remaining = remaining[1], remaining[2:]
+    if remaining[:1] == ['comment']:
+        if len(remaining) != 2 or len(remaining[1].encode('utf-8')) > 256:
+            return UfwRule(supported=False)
+        comment, remaining = remaining[1], []
+    if remaining:
+        return UfwRule(supported=False)
+    host = source.network_address.compressed if source.prefixlen == source.max_prefixlen else None
+    return UfwRule(host, destination, app, tokens[1].upper(), comment)
+
+
+def parse_ufw_added(output: str) -> UfwManagedSnapshot:
+    """Validate the C/English added header and non-executingly tokenize each rule."""
+    if not _bounded_output(output):
+        return UfwManagedSnapshot(reason='evidence-limit-or-control-text')
+    lines = [line for line in output.splitlines() if line.strip()]
+    if len(lines) < 2 or lines[0] != ADDED_HEADER:
+        return UfwManagedSnapshot(reason='unrecognized-added-output')
+    if lines[1:] == ['(None)']:
+        return UfwManagedSnapshot()
     rules = []
-    for number, line in enumerate(lines[3:], 1):
-        match = re.fullmatch(r'\[\s*(\d+)\] (.+?)\s+(ALLOW|DENY|REJECT|LIMIT) (IN|OUT|FWD)\s+(.+?)(?:\s+# (.*))?', line)
-        if not match or int(match[1]) != number or not match[2].strip() or not match[5].strip():
-            return UfwStatus(reason='unrecognized-status-output')
-        rules.append(_status_rule(match[2].strip(), match[5].strip(), match[3], match[4], match[6] or ''))
-    return UfwStatus(True, tuple(rules))
+    try:
+        for line in lines[1:]:
+            tokens = shlex.split(line)
+            if len(tokens) < 2 or tokens[0] != 'ufw' or tokens[1] not in ('allow', 'deny', 'reject', 'limit', 'route'):
+                raise ValueError('Unrecognized added rule')
+            rules.append(_added_rule(tokens))
+        return UfwManagedSnapshot(tuple(rules))
+    except ValueError:
+        return UfwManagedSnapshot(reason='unrecognized-added-output')
 
 
 def _live_rule(tokens: list[str], version: int) -> UfwRule:
@@ -322,11 +346,19 @@ def parse_ufw_save(output: str, version: int) -> UfwLiveSnapshot:
 
 
 def read_ufw_status() -> UfwStatus:
-    """Read one fixed numbered status command; never force locale or try fallbacks."""
-    result = run_host_command(['ufw', 'status', 'numbered'], timeout=8, sudo=True)
+    """Read fixed runtime status only; never force locale or try fallbacks."""
+    result = run_host_command(['ufw', 'status'], timeout=8, sudo=True)
     if result.failure is not None or result.returncode != 0:
         return UfwStatus(reason=result.failure.value if result.failure else 'command-failure')
     return parse_ufw_status(result.stdout)
+
+
+def read_ufw_added() -> UfwManagedSnapshot:
+    """Read normalized managed rules only; never execute or replay their syntax."""
+    result = run_host_command(['ufw', 'show', 'added'], timeout=8, sudo=True)
+    if result.failure is not None or result.returncode != 0:
+        return UfwManagedSnapshot(reason=result.failure.value if result.failure else 'command-failure')
+    return parse_ufw_added(result.stdout)
 
 
 def read_ufw_saves(actions: Sequence[UfwAction]) -> dict[int, UfwLiveSnapshot]:
@@ -345,7 +377,7 @@ def read_ufw_saves(actions: Sequence[UfwAction]) -> dict[int, UfwLiveSnapshot]:
 
 
 def _matching_rules(action: UfwAction, host: str, rules: Sequence[UfwRule], *, frontend: bool) -> bool:
-    """Require scope/block equality and, in the status layer only, the comment."""
+    """Require scope/block equality and, in the managed layer only, the comment."""
     target = action.blocktype.upper() if frontend else {'deny': 'DROP', 'reject': 'REJECT'}[action.blocktype]
     pattern = re.escape(action.comment).replace(COUNT_TAG, r'[0-9]{1,10}') if action.dynamic_count else re.escape(action.comment)
     return any(rule.supported and rule.source == host and rule.destination == action.destination and
@@ -353,8 +385,8 @@ def _matching_rules(action: UfwAction, host: str, rules: Sequence[UfwRule], *, f
                (not frontend or re.fullmatch(pattern, rule.comment) is not None) for rule in rules)
 
 
-def verify_ufw_ban(action: UfwAction, ip: str, status: UfwStatus, live: UfwLiveSnapshot) -> UfwEvidence:
-    """Require active UFW and exact evidence in both independently retained layers."""
+def verify_ufw_ban(action: UfwAction, ip: str, status: UfwStatus, added: UfwManagedSnapshot, live: UfwLiveSnapshot) -> UfwEvidence:
+    """Require independent active state, exact managed identity and live scope."""
     termination = 'not-verified' if action.termination_requested else 'not-requested'
     try:
         address = ipaddress.ip_address(ip)
@@ -362,18 +394,18 @@ def verify_ufw_ban(action: UfwAction, ip: str, status: UfwStatus, live: UfwLiveS
         return UfwEvidence('unverifiable', 'invalid-ip', connection_termination=termination)
     if '%' in ip or address.version != action.ip_version or live.ip_version != action.ip_version:
         return UfwEvidence('unverifiable', 'ip-family-mismatch', connection_termination=termination)
-    managed = None if status.reason or status.active is None else _matching_rules(action, address.compressed, status.rules, frontend=True)
+    managed = None if added.reason else _matching_rules(action, address.compressed, added.rules, frontend=True)
     underlying = None if live.reason else live.chain_present and _matching_rules(action, address.compressed, live.rules, frontend=False)
     outcome, reason = 'confirmed', 'entry-observed'
     if status.reason or status.active is None:
         outcome, reason = 'unverifiable', status.reason or 'status-unavailable'
     elif not status.active:
         outcome, reason = 'missing', 'ufw-inactive'
-    elif live.reason:
-        outcome, reason = 'unverifiable', live.reason
+    elif added.reason or live.reason:
+        outcome, reason = 'unverifiable', added.reason or live.reason
     elif not managed:
-        opaque = any(not rule.supported for rule in status.rules)
-        outcome, reason = ('unverifiable', 'unsupported-status-rule') if opaque else ('missing', 'ufw-rule-absent')
+        opaque = any(not rule.supported for rule in added.rules)
+        outcome, reason = ('unverifiable', 'unsupported-added-rule') if opaque else ('missing', 'ufw-rule-absent')
     elif not underlying:
         opaque = any(not rule.supported for rule in live.rules)
         outcome, reason = ('unverifiable', 'unsupported-live-rule') if opaque else ('missing', 'ufw-live-rule-absent')

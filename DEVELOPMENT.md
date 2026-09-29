@@ -327,21 +327,12 @@ this backend has no UI, ordinary Report, export or full race-bracket caller.
 
 ### UFW direct evidence
 
-**Issue #112 qualification is blocked.** Ubuntu 24.04 UFW 0.36.2 permits an
-application profile named `198.51.100.10` and renders it exactly like a numeric
-destination in numbered status. Qualification reproduced a false confirmation
-by combining that application row with a separate destination-only live rule
-for the same source. Excluding configured numeric-named applications does not
-disambiguate unrelated rows. The retained regression fails intentionally until
-the fixed-read evidence contract is resolved; this backend is not accepted.
-Per #112, implementation stopped at this supported-baseline contradiction.
-
 `offenders_ufw.classify_ufw_action` requires the complete stock Fail2Ban
 1.0.2/1.1.0 conditional UFW rule path, with `prepend`, `deny`/`reject`, a numeric
 destination (or `any`), and an empty or bounded application-profile identity
 (up to 64 characters, including numeric-leading names but excluding bare ports).
-Profiles named `Anywhere` or starting with a parseable IP address are unsupported:
-their status column cannot distinguish a profile from a numeric destination.
+IP-looking application identities remain applications through the explicit
+`app` token in the managed projection; rendered status rows establish no scope.
 It consumes foundation runtime properties without executing the action text.
 The resolved rule lines retain stock quoting; shell token equality alone cannot
 establish compatibility when a literal field becomes an unquoted operator.
@@ -351,7 +342,8 @@ template permits a dynamic field: one to ten ASCII decimal count digits, with
 the resolved name exact. Other unresolved/static substitutions retain the
 foundation parse error; custom action syntax is unsupported.
 
-`read_ufw_status` runs only `sudo -n ufw status numbered`.
+`read_ufw_status` runs only `sudo -n ufw status` for active/inactive state.
+`read_ufw_added` separately reads `sudo -n ufw show added` for managed identity.
 `read_ufw_saves` deduplicates relevant IP families and runs only bare
 `sudo -n iptables-save` or `sudo -n ip6tables-save`. Each uses the existing
 eight-second command deadline and a 4 MiB parser/retention bound after capture.
@@ -360,19 +352,27 @@ The status contract is qualified C/English UFW 0.36.2; localized or unfamiliar
 framing stays unverifiable. Failed status reads leave active state unknown,
 distinct from a successful installed/active or installed/inactive observation.
 
-`parse_ufw_status` retains normalized managed source/destination/application,
-block and comment facts. `parse_ufw_save` validates save framing and keeps only
+`parse_ufw_status` retains active state only and discards rendered rule rows.
+`parse_ufw_added` validates the English header and uses non-executing `shlex`
+tokenization for the finite incoming `ufw deny|reject from <host> to <destination>`
+form, with optional `app <profile>` and comment. It also accepts UFW 0.36.2's
+canonical source-only omission of `to any`, with at most a comment and no app,
+port, protocol, direction/interface, route or other scope tokens. That form can
+match only an expected anywhere destination and empty application. Malformed
+or unfamiliar evidence cannot establish authoritative absence.
+`parse_ufw_save` validates save framing and keeps only
 the matching `ufw-user-input` or `ufw6-user-input` chain's live scope and target.
 It reuses #111's identical bounds, chain grammar and finite REJECT replies;
 the reviewed iptables projection/parser is unchanged because it intentionally
 discards UFW's required destination/application scope. No generic parser or
 frontend model is introduced. Snapshots retain no raw firewall dumps.
 
-`verify_ufw_ban` requires active status plus an exact managed row and live rule.
+`verify_ufw_ban` requires separate active status, exact managed identity and live
+rule evidence. The three snapshots remain independently available to integration.
 `deny` corresponds to DROP and `reject` to REJECT. Numeric destinations normalize
 as networks; sources must be exact hosts. Application rules require the exact
 `dapp_<profile>` live marker, with spaces encoded as `%20`. The expected user
-comment belongs only to the status layer. Managed/live presence remain separate
+comment belongs only to the added-rule layer. Managed/live presence remain separate
 nullable facts; unavailable evidence is not authoritative absence. Optional
 `kill`/`kill-mode` behavior is retained as `connection_termination=not-verified`;
 no connection tool runs. Unfamiliar relevant rule restrictions fail closed.

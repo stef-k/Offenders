@@ -1,9 +1,11 @@
 Status: active
 
-     To                         Action      From
-     --                         ------      ----
-[ 1] 198.51.100.0/24            REJECT IN   192.0.2.3                  # static evidence
-[ 2] Evidence App               DENY IN     192.0.2.2                  # by Fail2Ban after 42 attempts against guard
-[ 3] Anywhere                   REJECT IN   192.0.2.1                  # by Fail2Ban after 3 attempts against guard
-[ 4] Anywhere (v6)              DENY IN     2001:db8::2
-[ 5] 2001:db8::10 Evidence App  DENY IN     2001:db8::1                # static evidence
+To                         Action      From
+--                         ------      ----
+198.51.100.10              DENY        192.0.2.221                # by Fail2Ban after 3 attempts against guard
+198.51.100.10              DENY        192.0.2.220                # by Fail2Ban after 3 attempts against guard
+198.51.100.0/24            REJECT      192.0.2.3                  # static evidence
+Evidence App               DENY        192.0.2.2                  # by Fail2Ban after 42 attempts against guard
+Anywhere                   REJECT      192.0.2.1                  # by Fail2Ban after 3 attempts against guard
+Anywhere (v6)              DENY        2001:db8::2
+2001:db8::10 Evidence App  DENY        2001:db8::1                # static evidence
