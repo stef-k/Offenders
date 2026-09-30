@@ -1,4 +1,4 @@
-"""Concise local Help prose and startup-only installed package metadata."""
+"""Local TUI Help prose and shared offline installed-version authority."""
 from importlib import metadata
 
 from textual.binding import Binding
@@ -17,12 +17,20 @@ PROJECT_URLS = {
 }
 
 
+def installed_version() -> str | None:
+    """Read a bounded single-line version from local distribution metadata."""
+    try:
+        return " ".join((metadata.version("offenders") or "").split())[:128] or None
+    except (metadata.PackageNotFoundError, OSError, ValueError, TypeError):
+        return None
+
+
 def project_information() -> str:
     """Read metadata once at app construction, with a bounded offline fallback."""
-    version, urls = "Unavailable (source development)", dict(PROJECT_URLS)
+    version = installed_version() or "Unavailable (source development)"
+    urls = dict(PROJECT_URLS)
     try:
         package = metadata.metadata("offenders")
-        version = package.get("Version") or version
         for entry in package.get_all("Project-URL", []):
             label, separator, url = entry.partition(",")
             if separator and label.strip() in urls and url.strip():
@@ -74,17 +82,7 @@ Namespace uncertainty prevents firewall reads. Unclassified sibling actions rema
 Direct rule/object observation is not packet or reachability proof. No timer, ordinary Report/CSV data, firewall changes or bans/unbans are added.
 
 Command line
-offenders
-  Open the TUI.
-offenders export [--period PERIOD] [--output-dir PATH]
-  Build one fresh report, export the same four-file CSV bundle and exit.
-  PERIOD: {', '.join(PERIODS)}; default: {DEFAULT_PERIOD}.
-offenders geoip status
-  Show local GeoIP source health and update policy.
-offenders geoip update
-  Explicitly download/validate/activate a GeoIP pair.
-offenders geoip auto on|off
-  Set the opt-in automatic-update policy.
+Run offenders --help for CLI syntax; offenders --version reports the installed version.
 
 Important semantics / safety
 • Historical bans != current banned membership.

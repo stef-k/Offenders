@@ -44,8 +44,8 @@ Press `? Help` from any Offenders product screen, including the focused dashboar
 filter. The key is reserved for Help rather than inserted into the filter.
 The first section, **Current screen**, lists that screen's controls and explains
 what its data means. Below it, one concise mini-manual covers the dashboard,
-investigation, Export, GeoIP, Registration/RDNS, Coverage, validation and Enforcement, current
-CLI commands, safety distinctions, installed version and project links.
+investigation, Export, GeoIP, Registration/RDNS, Coverage, validation and Enforcement,
+a CLI help pointer, safety distinctions, installed version and project links.
 
 Use arrow keys, PageUp/PageDown or Home/End to scroll; `Esc/q` returns to the exact
 underlying screen with its filter, selection and scroll intact. Pressing `?`
@@ -57,6 +57,13 @@ retains its native interface.
 
 This is a compact reference; the external documentation remains authoritative for
 installation, permissions, CSV schemas and deeper operational semantics.
+
+For command-line invocation, run `offenders --help` (or `-h`). Export and GeoIP
+own their option help at `offenders export --help` and `offenders geoip --help`.
+`offenders --version` (or `-V`) prints the installed distribution version, or
+`offenders (source development)` when distribution metadata is unavailable.
+Top-level help/version switches must be used alone; they perform no acquisition,
+network requests or persistent-state work.
 
 ## Background activity
 
