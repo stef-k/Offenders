@@ -4,6 +4,9 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Omit uncollected Backend/Filter fields from Jail Detail while preserving
+  numeric unavailable values and CSV export compatibility (#121).
+
 - Default Coverage to an independent 7d window with local 7d/24h switching;
   expose suppressed decisions and their reasons, keep validation candidate-only,
   and show only working Coverage controls (#120).

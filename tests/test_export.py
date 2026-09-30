@@ -62,6 +62,16 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(len(events), 12)
             shell.assert_not_called()
 
+    def test_uncollected_jail_identities_remain_empty_csv_fields(self):
+        """Schema v1 retains both columns when optional identities are absent."""
+        source = report()
+        self.assertIsNone(source.jail_statuses[0].backend)
+        self.assertIsNone(source.jail_statuses[0].filter_name)
+        with tempfile.TemporaryDirectory() as root:
+            rows = self.read(export_report(source, root), "jail-status.csv")
+        self.assertEqual(rows[0], EXPECTED_HEADERS["jail-status.csv"].split(","))
+        self.assertEqual(rows[1][8:10], ["", ""])
+
     def test_empty_all_and_existing_empty_directory(self):
         source = replace(report(), period='all', events=[], top_offenders=[], jail_statuses=[])
         with tempfile.TemporaryDirectory() as root:

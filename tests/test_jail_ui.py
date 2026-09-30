@@ -38,6 +38,31 @@ class JailDetailTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Filter: sshd", text)
         self.assertIn("192.0.2.1", text)
 
+    def test_optional_identities_are_only_shown_when_collected(self):
+        """Omit absent identities independently; even empty strings are literal."""
+        jail = JailStatus("sshd", 0, 0, 0, 0, ())
+        for backend, filter_name, expected in (
+            (None, None, []),
+            ("[blue]systemd", None, ["Backend: [blue]systemd"]),
+            (None, "[green]sshd", ["Filter: [green]sshd"]),
+            ("", "", ["Backend: ", "Filter: "]),
+        ):
+            with self.subTest(backend=backend, filter_name=filter_name):
+                status = replace(jail, backend=backend, filter_name=filter_name)
+                lines = jail_details(jail.name, snapshot(status)).plain.splitlines()
+                self.assertEqual([line for line in lines if line.startswith(("Backend:", "Filter:"))],
+                                 expected)
+
+    def test_numeric_settings_distinguish_zero_from_unavailable(self):
+        """Keep all acquired numeric settings visible, including zero and None."""
+        jail = JailStatus("sshd", 0, 0, 0, 0, ())
+        for value, expected in ((0, "0"), (None, "Unavailable")):
+            with self.subTest(value=value):
+                status = replace(jail, bantime=value, findtime=value, maxretry=value)
+                lines = jail_details(jail.name, snapshot(status)).plain.splitlines()
+                for label in ("Bantime (seconds)", "Findtime (seconds)", "Maxretry"):
+                    self.assertIn(f"{label}: {expected}", lines)
+
     async def test_keyboard_refresh_period_failure_and_disappearance(self):
         """One flow proves selection, no open-time work, and last-known-good detail."""
         ssh = JailStatus("sshd", 0, 0, 0, 0, ())
@@ -85,8 +110,8 @@ class JailDetailTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("2001:db8::1", str(content.content))
                 self.assertIn("Currently banned: 0", str(content.content))
                 self.assertIn("Bantime (seconds): Unavailable", str(content.content))
-                self.assertIn("Backend: Unavailable", str(content.content))
-                self.assertIn("Filter: Unavailable", str(content.content))
+                self.assertNotIn("Backend:", str(content.content))
+                self.assertNotIn("Filter:", str(content.content))
                 await pilot.press("escape")
                 self.assertIs(app.focused, table)
                 self.assertEqual(table.get_row_at(table.cursor_row)[0], "sshd")
