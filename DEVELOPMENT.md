@@ -187,16 +187,21 @@ prove packet blocking or qualify a representative live host.
 
 | Responsibility | Module |
 | --- | --- |
-| Source selection, independent Country/ASN health, reader lifetime and lookup cache | `offenders_geoip.py` |
+| Current-generation reads, independent Country/ASN health, reader lifetime and lookup cache | `offenders_geoip.py` |
 | Bounded DB-IP acquisition/validation, atomic pair activation, retention and policy state | `offenders_geoip_update.py` |
 | CLI dispatch | `offenders_geoip_cli.py` |
 | Diagnostics, manual update and automatic-policy UI | `offenders_geoip_ui.py` |
 | Source-tree compatibility wrapper | `update_geoip_db.py` |
 
-Managed data and `state.json` live in the user-owned XDG data root. App-managed
-Country/ASN files take precedence over read-only system fallback files; the two
-databases retain independent health and source selection. `maxminddb` is the reader
-backend. Generation changes invalidate reader/cache state without a restart.
+Managed data and `state.json` live in the user-owned XDG data root. The sole read
+paths are `current/dbip-{country,asn}-lite.mmdb`, where `current` points to an
+atomically activated directory under `generations/`. Each database has one
+immutable health snapshot containing its stable path, resolved target, file
+identity, reader availability and validity. Country/ASN remain independent;
+there are no alternate-source reads. `maxminddb` is the reader backend.
+Refresh pins the current pair once; changed file identities invalidate their
+readers and lookup caches without a restart. Lookup corruption closes the
+affected reader until refresh observes a valid replacement.
 
 Imports, status queries, and ordinary report construction do not fetch data.
 Updates take a nonblocking writer lock, stage and validate both databases, then

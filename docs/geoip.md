@@ -20,22 +20,32 @@ offenders geoip auto off        # persist disabled policy (the default)
 Status, local reads, imports, and lookups never download. Manual update performs
 network access and writes user-owned data. Automatic policy is off by default;
 changing it persists local state. The normal 30-second report refresh never
-checks for GeoIP updates. There are no top-level `--help`, `--version`, or generic
-configuration commands.
+checks for GeoIP updates. Use `offenders --help` for CLI discovery.
 
 ## Optional GeoIP enrichment
 
 Offenders works without GeoIP databases. Country and ASN have independent health
-and source selection. **Unmapped** means a healthy database has no mapping for
+snapshots. **Unmapped** means a healthy database has no mapping for
 that IP; **Unavailable** means usable enrichment could not be obtained. Neither
 means there were no ban events.
 
-Preferred storage is `$XDG_DATA_HOME/offenders/geoip`, or
+App-managed storage is `$XDG_DATA_HOME/offenders/geoip`, or
 `~/.local/share/offenders/geoip` when unset. Use the same user and XDG environment
-for the CLI and dashboard. Existing flat files there remain readable. Legacy
-`/usr/share/GeoIP/dbip-{country,asn}-lite.mmdb` files are read-only fallback,
-selected independently when preferred Country or ASN data is missing/unhealthy.
-Updates never modify those system files.
+for the CLI and dashboard. The only supported database read paths are
+`current/dbip-country-lite.mmdb` and `current/dbip-asn-lite.mmdb` under that root:
+
+```text
+geoip/
+  current -> generations/<generation>/
+  generations/
+    <generation>/
+      dbip-country-lite.mmdb
+      dbip-asn-lite.mmdb
+```
+
+If `current` is missing/broken or a database is unusable, that kind remains
+unavailable until a normal update activates valid data. Offenders does not
+import or read databases outside this current-generation layout.
 
 The first explicit update is consent to download DB-IP Lite Country and ASN data
 into user-owned storage. Updates validate both files before activation; failed
@@ -55,14 +65,16 @@ An already activated current UTC month is not downloaded again automatically;
 a previous-month publication fallback can retry after 24 hours. Manual updates
 are explicit and run regardless of that automatic schedule.
 
-Diagnostics show each source, reader health, path, local age, policy, and latest
+Diagnostics show each database's health, stable current path, resolved target,
+active generation, reader availability, local age, policy, and latest
 outcome. Files older than **62 local days** produce a stale warning, not invalidity;
-readable data remains usable. Healthy fallback and healthy-but-unmapped addresses
+readable data remains usable. Healthy-but-unmapped addresses
 do not cause the global unavailable/stale warning.
 
-If migrating from a system-wide GeoIP updater, retire its root cron invocation
-when switching to Offenders-managed updates. Updates use the invoking user's
-data directory; use `offenders geoip update` as that user.
+`offenders geoip status` reports the active generation, independent Country/ASN
+health, automatic policy, last check, and update outcome as JSON. Status is
+read-only and performs no network access or filesystem writes. Updates use the
+invoking user's data directory; use `offenders geoip update` as that user.
 
 DB-IP Lite is licensed under **Creative Commons Attribution 4.0**. Retain
 [IP Geolocation by DB-IP](https://db-ip.com) attribution when using or redistributing

@@ -12,24 +12,24 @@ import offenders
 from offenders_activity import ActivityStatus, ActivityWorkers
 import offenders_geoip_ui as ui
 import offenders_geoip_update as updater
-from offenders_geoip import CandidateHealth, DatabaseHealth
+from offenders_geoip import DatabaseHealth
 from test_refresh import report
 
 
-def healthy(source="app-managed", age=0):
-    """Representative source snapshot, independent of host databases."""
-    item = CandidateHealth(source, "/data/db.mmdb", active=True, exists=True,
-                           readable=True, metadata_valid=True, reader_available=True,
-                           state="healthy", mtime_ns=int((time.time() - age) * 1e9))
-    return DatabaseHealth((item,), source, source == "legacy-system")
+def healthy(age=0):
+    """Representative current-generation snapshot, independent of host data."""
+    return DatabaseHealth("/data/current/dbip-country-lite.mmdb", exists=True,
+                          resolved_path="/data/generations/first/dbip-country-lite.mmdb",
+                          readable=True, metadata_valid=True, reader_available=True,
+                          state="healthy", mtime_ns=int((time.time() - age) * 1e9))
 
 
 class PresentationTests(unittest.TestCase):
-    def test_independent_health_staleness_and_source_guidance(self):
-        """Global warnings depend on source health, never on unmapped rows."""
-        good, missing = healthy(), DatabaseHealth(())
+    def test_independent_health_and_staleness(self):
+        """Global warnings depend on database health, never on unmapped rows."""
+        good, missing = healthy(), DatabaseHealth("/data/current/dbip-country-lite.mmdb")
         for country, asn, expected in (
-            (good, good, ""), (healthy("legacy-system"), good, ""),
+            (good, good, ""),
             (missing, good, "Country unavailable"),
             (good, missing, "Asn unavailable"),
             (missing, missing, "Country unavailable; Asn unavailable"),
@@ -40,13 +40,31 @@ class PresentationTests(unittest.TestCase):
                 self.assertIn(expected, line)
                 if not expected:
                     self.assertEqual(line, "")
-        for value, label in ((good, "app-managed"),
-                             (healthy("legacy-system"), "legacy fallback"),
-                             (missing, "none")):
+    def test_current_diagnostics_and_truthful_guidance(self):
+        """Useful generation facts replace source rows; guidance follows health/age."""
+        good = healthy()
+        for value, guidance in (
+            (good, "Database healthy"),
+            (healthy(age=63 * 86400), "stale local data"),
+            (replace(good, state="missing", exists=False), "stage a fresh generation"),
+            (replace(good, state="reader_unavailable", reader_available=False), "Python environment"),
+            (replace(good, state="invalid"), "stage a fresh generation"),
+            (replace(good, state="unreadable"), "path permissions"),
+        ):
             text = str(ui.diagnostics({"country": value}, Path("/data"), {}, ""))
-            self.assertIn(f"active source: {label}", text)
+            self.assertIn(f"Country database: {value.state}", text)
             self.assertIn("Automatic updates: off", text)
-            self.assertIn("Update now", text)
+            self.assertIn(guidance, text)
+            for removed in ("legacy-system", "legacy fallback", "/usr/share/GeoIP", "active source"):
+                self.assertNotIn(removed, text)
+        text = str(ui.diagnostics({"country": good}, Path("/data"), {}, ""))
+        for fact in ("Current path: /data/current/", "Resolved target: /data/generations/first/",
+                     "Active generation: first", "Observed local file age:", "Python MMDB reader: available"):
+            self.assertIn(fact, text)
+        self.assertNotIn("Use Update now", text)
+        invalid = replace(healthy(age=63 * 86400), state="invalid")
+        text = str(ui.diagnostics({"country": invalid}, Path("/data"), {}, ""))
+        self.assertNotIn("still usable", text)
 
 
 @patch.object(ActivityWorkers, "MINIMUM_VISIBLE", 0)
@@ -70,7 +88,7 @@ class ActionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_data_policy_and_degraded_report_are_independent(self):
         """First launch never fetches; toggling persists; report failure keeps warning."""
-        missing = {"country": DatabaseHealth(()), "asn": healthy()}
+        missing = {"country": DatabaseHealth("/data/current/dbip-country-lite.mmdb"), "asn": healthy()}
         with patch.object(ui.geoip, "refresh", return_value=missing), \
              patch.object(offenders, "build_report", return_value=replace(self.report, geoip_health=missing)), \
              patch.object(ui, "update") as update:

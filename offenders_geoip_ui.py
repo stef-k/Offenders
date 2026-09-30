@@ -25,26 +25,24 @@ def status_line(health, now=None):
     now = time.time() if now is None else now
     warnings = []
     for kind, database in health.items():
-        active = next((item for item in database.candidates if item.active), None)
-        if active is None:
+        if database.state != "healthy":
             warnings.append(f"{kind.title()} unavailable")
-        elif active.mtime_ns is not None and now - active.mtime_ns / 1e9 > STALE_SECONDS:
+        elif database.mtime_ns is not None and now - database.mtime_ns / 1e9 > STALE_SECONDS:
             warnings.append(f"{kind.title()} stale (usable)")
     return "GeoIP: " + "; ".join(warnings) + " — g: details" if warnings else ""
 
 
 def guidance(database):
     """Suggest only actions supported by the shared reader and updater."""
-    states = {item.state for item in database.candidates}
-    if any(not item.reader_available for item in database.candidates):
+    if not database.reader_available:
         return "Repair the application Python environment (MMDB reader unavailable)."
-    if "unreadable" in states:
+    if database.state == "unreadable":
         return "Inspect user-owned path permissions; Update now may replace writable data."
-    if database.fallback:
-        return "Legacy fallback works; Update now migrates to app-managed storage."
-    if database.source == "none":
+    if database.state != "healthy":
         return "Use Update now to stage a fresh generation."
-    return "Use Update now or enable automatic updates for stale local data."
+    if database.mtime_ns is not None and time.time() - database.mtime_ns / 1e9 > STALE_SECONDS:
+        return "Use Update now or enable automatic updates for stale local data."
+    return "Database healthy."
 
 
 def diagnostics(health, root, state, feedback):
@@ -55,26 +53,22 @@ def diagnostics(health, root, state, feedback):
              f"Latest update outcome: {state.get('outcome', 'never checked')}",
              f"Last check (UTC epoch): {state.get('last_check', 'never')}"]
     for kind, database in health.items():
-        source = "legacy fallback" if database.fallback else database.source
-        lines.extend(("", f"{kind.title()} active source: {source}"))
-        for item in database.candidates:
-            lines.extend((
-                f"  {item.source}: {item.state}{' (active)' if item.active else ''}",
-                f"  Configured path: {item.path}",
-                f"  Resolved target: {item.resolved_path or 'unknown'}",
-                f"  Exists: {item.exists}; readable: {item.readable}; valid: {item.metadata_valid}",
-                f"  Python MMDB reader: {'available' if item.reader_available else 'unavailable'}",
-            ))
-            if item.active and item.resolved_path and item.source == "app-managed":
-                parent = Path(item.resolved_path).parent
-                if parent.parent == root.absolute() / "generations":
-                    lines.append(f"  Active generation: {parent.name}")
-            if item.active and item.mtime_ns is not None:
-                days = max(0, (time.time() - item.mtime_ns / 1e9) / 86400)
-                lines.append(f"  Observed local file age: {days:.1f} days" +
-                             (" (stale warning; still usable)" if days > 62 else ""))
-            if item.detail:
-                lines.append(f"  Detail: {bounded(item.detail)}")
+        lines.extend(("", f"{kind.title()} database: {database.state}",
+                      f"  Current path: {database.path}",
+                      f"  Resolved target: {database.resolved_path or 'unknown'}",
+                      f"  Exists: {database.exists}; readable: {database.readable}; valid: {database.metadata_valid}",
+                      f"  Python MMDB reader: {'available' if database.reader_available else 'unavailable'}"))
+        if database.resolved_path:
+            parent = Path(database.resolved_path).parent
+            if parent.parent == root.absolute() / "generations":
+                lines.append(f"  Active generation: {parent.name}")
+        if database.mtime_ns is not None:
+            days = max(0, (time.time() - database.mtime_ns / 1e9) / 86400)
+            lines.append(f"  Observed local file age: {days:.1f} days" +
+                         (" (stale warning; still usable)"
+                          if database.state == "healthy" and days > 62 else ""))
+        if database.detail:
+            lines.append(f"  Detail: {bounded(database.detail)}")
         lines.append(guidance(database))
     lines.extend(("", feedback, "u: Update now   a: Toggle automatic updates   Esc/q: Close"))
     return Text("\n".join(lines))
@@ -115,7 +109,7 @@ class GeoIPStatus(Static):
             self.app.call_from_thread(self._feedback, bounded(error))
 
     def set_health(self, health):
-        """Accept report or post-activation source facts without touching freshness."""
+        """Accept report or post-activation database facts without touching freshness."""
         self.health = health
         line = status_line(health)
         self.display = bool(line)
@@ -128,7 +122,7 @@ class GeoIPStatus(Static):
         self._redraw()
 
     def _feedback(self, message):
-        """Display errors separately from source health, preserving usable data."""
+        """Display errors separately from database health, preserving usable data."""
         self.feedback = message
         self._redraw()
 
