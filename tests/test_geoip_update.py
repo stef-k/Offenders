@@ -57,17 +57,13 @@ class LifecycleTests(unittest.TestCase):
         return updater.update(self.root, opener=kwargs.pop("opener", self.fetch),
                               now=kwargs.pop("now", self.now), **kwargs)
 
-    def test_pair_activation_refresh_fallback_and_retention(self):
-        legacy = Path(self.temp.name) / "legacy"
-        legacy.mkdir()
-        for role in updater.KINDS:
-            (legacy / f"dbip-{role}-lite.mmdb").write_text("legacy")
-        service = geo.GeoIP(self.root, legacy)
+    def test_pair_activation_refresh_publication_fallback_and_retention(self):
+        service = geo.GeoIP(self.root)
         self.addCleanup(service.close)
-        self.assertTrue(all(h.fallback for h in service.refresh().values()))
+        self.assertTrue(all(h.state == "missing" for h in service.refresh().values()))
         self.assertEqual(self.run_update(), "2026-09")  # Manual while auto is off.
         first = (self.root / "current").resolve()
-        self.assertTrue(all(h.source == "app-managed" for h in service.refresh().values()))
+        self.assertTrue(all(h.state == "healthy" for h in service.refresh().values()))
         self.assertEqual(service.lookup("8.8.8.8").country.value, "DBIP-country")
         incomplete = self.root / "generations" / ("2026-01-" + "a" * 32)
         incomplete.mkdir()
@@ -88,30 +84,24 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(incomplete.exists())
         self.assertEqual(len(list((self.root / "generations").iterdir())), 3)
         self.assertTrue(all("2026-08" in url for url in self.urls[-2:]))
-        self.assertTrue(all(p.read_text() == "legacy" for p in legacy.iterdir()))
         self.assertFalse(list(self.root.glob(".staging-*")))
 
-    def test_update_recovers_cyclic_current_from_legacy_fallback(self):
-        """Explicit update repairs a broken managed link without touching legacy."""
+    def test_update_recovers_cyclic_current(self):
+        """Explicit update repairs a broken managed link and restores lookup health."""
         self.root.mkdir()
         (self.root / "current").symlink_to("current")
-        legacy = Path(self.temp.name) / "legacy"
-        legacy.mkdir()
-        for role in updater.KINDS:
-            (legacy / f"dbip-{role}-lite.mmdb").write_text("legacy")
-        service = geo.GeoIP(self.root, legacy)
+        service = geo.GeoIP(self.root)
         self.addCleanup(service.close)
-        self.assertTrue(all(health.fallback for health in service.refresh().values()))
-        self.assertEqual(service.lookup("8.8.8.8").country.value, "legacy")
+        self.assertTrue(all(health.state == "unreadable" for health in service.refresh().values()))
+        self.assertEqual(service.lookup("8.8.8.8").country.state, "unavailable")
 
         self.assertEqual(self.run_update(), "2026-09")
 
         active = (self.root / "current").resolve(strict=True)
         self.assertEqual(active.parent, self.root / "generations")
-        self.assertTrue(all(health.source == "app-managed"
+        self.assertTrue(all(health.state == "healthy"
                             for health in service.refresh().values()))
         self.assertEqual(service.lookup("8.8.8.8").country.value, "DBIP-country")
-        self.assertTrue(all(path.read_text() == "legacy" for path in legacy.iterdir()))
 
     def test_failure_matrix_preserves_current_and_cleans_staging(self):
         self.run_update()
@@ -193,6 +183,34 @@ class LifecycleTests(unittest.TestCase):
              patch("sys.stderr", new_callable=io.StringIO) as error:
             self.assertEqual(cli.main(["update"]), 1)
             self.assertIn("offline", error.getvalue())
+
+    def test_status_single_source_generation_and_read_only_health(self):
+        """Status reports active/partial health without invoking writes or downloads."""
+        self.run_update()
+        active = (self.root / "current").resolve()
+        (active / "dbip-asn-lite.mmdb").unlink()
+        alias = Path(self.temp.name) / "data-alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        with patch.object(cli, "resolve_data_root", return_value=alias), \
+             patch("urllib.request.OpenerDirector.open", side_effect=AssertionError("network")), \
+             patch.object(updater, "writer_lock", side_effect=AssertionError("write lock")), \
+             patch.object(Path, "mkdir", side_effect=AssertionError("mkdir")), \
+             patch.object(updater, "_write_state", side_effect=AssertionError("state write")), \
+             patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertEqual(cli.main(["status"]), 0)
+        status = json.loads(output.getvalue())
+        self.assertEqual(status["generation"], active.name)
+        self.assertEqual(status["health"]["country"]["state"], "healthy")
+        self.assertEqual(status["health"]["country"]["path"], str(alias / "current/dbip-country-lite.mmdb"))
+        self.assertEqual(status["health"]["asn"]["state"], "missing")
+        for health in status["health"].values():
+            self.assertTrue({"path", "resolved_path", "generation", "state"} <= health.keys())
+            self.assertFalse({"candidates", "source", "fallback", "active"} & health.keys())
+        self.assertEqual(status["last_check"], self.now)
+        self.assertEqual(status["outcome"], "updated")
+        self.assertFalse(status["auto"])
+        self.assertEqual({p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}, before)
 
 
     def test_automatic_current_month_skipped_previous_month_retried(self):

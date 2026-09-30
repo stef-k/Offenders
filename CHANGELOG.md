@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Read GeoIP only from app-managed atomic `current` generations; remove flat-XDG
+  and system fallback reads, and simplify database health, diagnostics and status
+  JSON while preserving updater safety and publication fallback (#124).
+
 - Omit uncollected Backend/Filter fields from Jail Detail while preserving
   numeric unavailable values and CSV export compatibility (#121).
 

@@ -1,4 +1,5 @@
-"""Offline source, lifetime, cache, and report contracts with fake MMDB readers."""
+"""Offline current-generation, cache, and report contracts with fake MMDB readers."""
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,16 +43,17 @@ class GeoIPTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.app, self.legacy = self.root / "app", self.root / "legacy"
-        self.app.mkdir()
-        self.legacy.mkdir()
+        self.app = self.root / "app"
+        self.generation = self.app / "generations" / "first"
+        self.generation.mkdir(parents=True)
+        (self.app / "current").symlink_to("generations/first")
         self.readers = []
         backend = SimpleNamespace(open_database=self.open_reader,
                                   InvalidDatabaseError=ValueError)
         self.patch = patch.dict("sys.modules", maxminddb=backend)
         self.patch.start()
         self.addCleanup(self.patch.stop)
-        self.geo = GeoIP(self.app, self.legacy, cache_size=2)
+        self.geo = GeoIP(self.app, cache_size=2)
         self.addCleanup(self.geo.close)
 
     def open_reader(self, path):
@@ -66,21 +68,14 @@ class GeoIPTests(unittest.TestCase):
         path.write_text(value)
         return path
 
-    def test_preference_fallback_and_independent_health(self):
+    def test_current_pair_health_and_lookup(self):
+        """Both kinds expose their stable path and usable current generation."""
         for kind in ("country", "asn"):
-            self.write(self.legacy, kind)
+            self.write(self.generation, kind, "Greece")
         health = self.geo.refresh()
-        self.assertTrue(all(h.fallback for h in health.values()))
-        self.assertEqual(health["country"].candidates[0].state, "missing")
-        self.write(self.app, "country", "corrupt")
-        self.write(self.app, "asn")
-        health = self.geo.refresh()
-        self.assertEqual(health["country"].candidates[0].state, "invalid")
-        self.assertEqual(health["country"].source, "legacy-system")
-        self.assertEqual(health["asn"].source, "app-managed")
-        self.write(self.app, "country", "Greece")
-        health = self.geo.refresh()
-        self.assertEqual(health["country"].source, "app-managed")
+        self.assertTrue(all(h.state == "healthy" for h in health.values()))
+        self.assertEqual(health["country"].path, str(self.app / "current/dbip-country-lite.mmdb"))
+        self.assertEqual(health["country"].resolved_path, str(self.generation / "dbip-country-lite.mmdb"))
         result = self.geo.lookup("8.8.8.8")
         self.assertEqual(result.country.value, "Greece")
         self.assertEqual((result.asn.value, result.asn.organization), ("15169", "Google"))
@@ -89,7 +84,7 @@ class GeoIPTests(unittest.TestCase):
     def test_missing_databases_are_independent(self):
         for kind, other in (("country", "asn"), ("asn", "country")):
             with self.subTest(kind=kind):
-                path = self.write(self.app, kind)
+                path = self.write(self.generation, kind)
                 self.geo.refresh()
                 result = self.geo.lookup("8.8.8.8")
                 self.assertEqual(getattr(result, kind).state, "mapped")
@@ -97,23 +92,29 @@ class GeoIPTests(unittest.TestCase):
                 path.unlink()
 
     def test_broken_unreadable_and_broken_backend(self):
-        path = self.app / "dbip-country-lite.mmdb"
+        """File/reader failures stay explicit and independent of the other kind."""
+        path = self.generation / "dbip-country-lite.mmdb"
         path.symlink_to(self.root / "missing")
-        self.assertEqual(self.geo.refresh()["country"].candidates[0].state, "broken_symlink")
+        self.assertEqual(self.geo.refresh()["country"].state, "missing")
         path.unlink()
-        self.write(self.app, "country")
+        self.write(self.generation, "country", "corrupt")
+        self.write(self.generation, "asn")
+        health = self.geo.refresh()
+        self.assertEqual(health["country"].state, "invalid")
+        self.assertEqual(health["asn"].state, "healthy")
+        self.write(self.generation, "country")
         with patch("offenders_geoip.os.access", return_value=False):
-            self.assertEqual(self.geo.refresh()["country"].candidates[0].state, "unreadable")
+            self.assertEqual(self.geo.refresh()["country"].state, "unreadable")
         with patch.dict("sys.modules", maxminddb=None):
-            health = self.geo.refresh()["country"].candidates[0]
+            health = self.geo.refresh()["country"]
             self.assertEqual(health.state, "reader_unavailable")
             self.assertFalse(health.reader_available)
         with patch.object(__import__('maxminddb'), "open_database", side_effect=RuntimeError("broken")):
-            self.assertEqual(self.geo.refresh()["country"].candidates[0].state, "reader_unavailable")
+            self.assertEqual(self.geo.refresh()["country"].state, "reader_unavailable")
 
     def test_reuse_normalization_lru_and_generation_switch(self):
-        country = self.write(self.app, "country")
-        self.write(self.app, "asn")
+        self.write(self.generation, "country")
+        self.write(self.generation, "asn")
         self.geo.refresh()
         old_country, old_asn = self.readers
         self.geo.lookup("2001:4860:4860:0000:0000:0000:0000:8888")
@@ -126,26 +127,29 @@ class GeoIPTests(unittest.TestCase):
         self.assertEqual(len(old_country.calls), 4)
         self.geo.refresh()
         self.assertEqual(len(self.readers), 2)
-        target = self.root / "new-country"
-        target.write_text("Greece")
-        country.unlink()
-        country.symlink_to(target)
+        target = self.app / "generations/second"
+        target.mkdir()
+        country = self.write(target, "country", "Greece")
+        self.write(target, "asn")
+        link = self.app / "current.tmp"
+        link.symlink_to("generations/second")
+        os.replace(link, self.app / "current")
         self.geo.refresh()
-        self.assertEqual(len(self.readers), 3)
+        self.assertEqual(len(self.readers), 4)
         self.assertTrue(old_country.closed)
-        self.assertFalse(old_asn.closed)
-        before = len(old_asn.calls)
+        self.assertTrue(old_asn.closed)
         self.assertEqual(self.geo.lookup("2001:4860:4860::8888").country.value, "Greece")
-        self.assertEqual(len(old_asn.calls), before)
-        target.write_text("France")
+        new_asn = self.readers[-1]
+        country.write_text("France")
         self.geo.refresh()
+        self.assertFalse(new_asn.closed)
         self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "France")
         self.geo.close()
         self.assertTrue(all(r.closed for r in self.readers))
 
     def test_report_preserves_values_and_structured_outcomes(self):
-        self.write(self.app, "country")
-        self.write(self.app, "asn")
+        self.write(self.generation, "country")
+        self.write(self.generation, "asn")
         lines = ["2026-09-27 01:00:00 [sshd] Ban 8.8.8.8",
                  "2026-09-27 01:00:01 [sshd] Ban 8.8.4.4"]
         with patch.object(report, "geoip", self.geo), \
@@ -156,11 +160,11 @@ class GeoIPTests(unittest.TestCase):
         self.assertEqual(result.top_offenders[0].country, "United States")
         self.assertEqual(result.top_offenders[0].asn, "15169")
         self.assertEqual(result.top_offenders[1].enrichment.country.state, "unmapped")
-        self.assertEqual(result.geoip_health["country"].source, "app-managed")
+        self.assertEqual(result.geoip_health["country"].state, "healthy")
 
     def test_incomplete_records_and_read_failures_remain_distinct(self):
-        self.write(self.app, "country")
-        self.write(self.app, "asn")
+        self.write(self.generation, "country")
+        self.write(self.generation, "asn")
         self.geo.refresh()
         country, asn = self.readers
         with patch.object(country, "get", return_value={"country": []}), \
@@ -175,47 +179,60 @@ class GeoIPTests(unittest.TestCase):
         # Failures are not cached as healthy negative answers.
         self.assertEqual(self.geo.lookup("1.1.1.1").country.state, "mapped")
 
-    def test_xdg_root_and_symlink_retarget(self):
-        with patch.dict("os.environ", XDG_DATA_HOME=str(self.root)):
-            data = self.root / "offenders/geoip"
-            data.mkdir(parents=True)
-            stable = data / "dbip-country-lite.mmdb"
-            first = self.root / "first"
-            second = self.root / "second"
-            first.write_text("France")
-            second.write_text("Greece")
-            stable.symlink_to(first)
-            service = GeoIP(legacy_root=self.legacy)
-            self.addCleanup(service.close)
-            service.refresh()
-            self.assertEqual(service.lookup("8.8.8.8").country.value, "France")
-            stable.unlink()
-            stable.symlink_to(second)
-            health = service.refresh()["country"].candidates[0]
-            self.assertTrue(health.is_symlink)
-            self.assertEqual(health.resolved_path, str(second))
-            self.assertEqual(service.lookup("8.8.8.8").country.value, "Greece")
-
-    def test_broken_managed_generation_retains_health_and_legacy_fallback(self):
-        """A cyclic current link must not abort report enrichment."""
-        (self.app / "current").symlink_to("current")
+    def test_missing_current_ignores_flat_and_system_databases(self):
+        """Valid obsolete files, including virtual system files, are never inspected."""
+        (self.app / "current").unlink()
+        system = self.root / "system"
+        system.mkdir()
         for kind in ("country", "asn"):
-            self.write(self.legacy, kind, "Greece")
-        health = self.geo.refresh()
-        self.assertTrue(all(item.fallback for item in health.values()))
-        self.assertTrue(all(item.candidates[0].state == "unreadable" for item in health.values()))
-        self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "Greece")
+            self.write(self.app, kind)
+            self.write(system, kind)
+        real_stat = Path.stat
 
-    def test_corrupt_data_section_is_unhealthy_and_allows_fallback(self):
-        preferred = self.write(self.app, "country")
-        self.write(self.legacy, "country", "France")
+        def stat(path, **kwargs):
+            if path.parent == Path("/usr/share/GeoIP"):
+                return real_stat(system / path.name, **kwargs)
+            return real_stat(path, **kwargs)
+
+        with patch.object(Path, "stat", autospec=True, side_effect=stat) as inspected:
+            health = self.geo.refresh()
+        self.assertTrue(all(h.state == "missing" for h in health.values()))
+        self.assertEqual(self.readers, [])
+        obsolete = {root / f"dbip-{kind}-lite.mmdb"
+                    for root in (self.app, Path("/usr/share/GeoIP"))
+                    for kind in ("country", "asn")}
+        self.assertFalse(any(call.args[0] in obsolete for call in inspected.call_args_list))
+        self.assertEqual(self.geo.lookup("8.8.8.8").country.state, "unavailable")
+
+    def test_dangling_and_cyclic_current_are_bounded_unhealthy(self):
+        """Broken current references never abort refresh or manufacture healthy data."""
+        for target, state in (("missing", "missing"), ("current", "unreadable")):
+            with self.subTest(target=target):
+                (self.app / "current").unlink()
+                (self.app / "current").symlink_to(target)
+                health = self.geo.refresh()
+                self.assertTrue(all(h.state == state for h in health.values()))
+                self.assertTrue(all(len(h.detail) <= 240 for h in health.values()))
+                self.assertEqual(self.geo.lookup("8.8.8.8").country.state, "unavailable")
+
+    def test_corrupt_lookup_stays_unavailable_until_valid_generation(self):
+        """Detected corruption closes the reader; unchanged refresh cannot resurrect it."""
+        self.write(self.generation, "country")
+        self.write(self.generation, "asn")
         self.geo.refresh()
         with patch.object(self.readers[0], "get", side_effect=ValueError("corrupt data")):
             self.assertEqual(self.geo.lookup("8.8.8.8").country.state, "unavailable")
-        health = self.geo.refresh()["country"]
-        self.assertEqual(health.candidates[0].state, "invalid")
-        self.assertTrue(health.fallback)
-        self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "France")
-        preferred.write_text("Greece")
-        self.assertEqual(self.geo.refresh()["country"].source, "app-managed")
+        self.assertTrue(self.readers[0].closed)
+        self.assertEqual(self.geo.health()["country"].state, "invalid")
+        self.assertEqual(self.geo.health()["asn"].state, "healthy")
+        self.assertEqual(self.geo.refresh()["country"].state, "invalid")
+        self.assertEqual(self.geo.lookup("8.8.8.8").country.state, "unavailable")
+        target = self.app / "generations/recovered"
+        target.mkdir()
+        self.write(target, "country", "Greece")
+        self.write(target, "asn")
+        link = self.app / "current.tmp"
+        link.symlink_to("generations/recovered")
+        os.replace(link, self.app / "current")
+        self.assertEqual(self.geo.refresh()["country"].state, "healthy")
         self.assertEqual(self.geo.lookup("8.8.8.8").country.value, "Greece")

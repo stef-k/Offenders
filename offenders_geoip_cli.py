@@ -13,7 +13,7 @@ def main(argv=None):
     """Dispatch GeoIP commands; status never writes or starts network work."""
     parser = argparse.ArgumentParser(prog="offenders geoip")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("status", help="Show local source health and update policy")
+    commands.add_parser("status", help="Show current database health and update policy")
     commands.add_parser("update", help="Download and activate a validated DB-IP pair")
     policy = commands.add_parser("auto", help="Set policy for future automatic checks")
     policy.add_argument("policy", choices=("on", "off"))
@@ -24,11 +24,10 @@ def main(argv=None):
             service = GeoIP(root)
             try:
                 health = service.refresh()
-                active_paths = [Path(item.resolved_path) for value in health.values()
-                                for item in value.candidates
-                                if item.active and item.source == "app-managed"]
+                active_paths = [Path(value.resolved_path) for value in health.values()
+                                if value.resolved_path]
                 generation = next((path.parent.name for path in active_paths
-                                   if path.parent.parent == root.absolute() / "generations"), None)
+                                   if path.parent.parent.name == "generations"), None)
                 state = read_state(root)
                 print(json.dumps({
                     "generation": generation,

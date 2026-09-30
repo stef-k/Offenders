@@ -1,7 +1,7 @@
-"""Read-only DB-IP source selection, reusable readers, and bounded enrichment.
+"""Read-only DB-IP current-generation health, readers, and bounded enrichment.
 
-Managed generations (or existing flat XDG files) take precedence over legacy
-system files. Refresh checks local generations; nothing downloads data.
+Only app-managed atomic generations are read. Refresh checks local data;
+nothing downloads or creates files.
 """
 from __future__ import annotations
 
@@ -14,8 +14,6 @@ from pathlib import Path
 from threading import RLock
 from typing import Literal
 
-GEO_COUNTRY_DB = "/usr/share/GeoIP/dbip-country-lite.mmdb"
-GEO_ASN_DB = "/usr/share/GeoIP/dbip-asn-lite.mmdb"
 CACHE_SIZE = 2048  # Per database; includes healthy negative lookups.
 
 
@@ -46,12 +44,10 @@ def validate_database(path: Path, kind: str):
 
 
 @dataclass(frozen=True)
-class CandidateHealth:
+class DatabaseHealth:
     """Snapshot of a stable path and the generation inspected behind it."""
 
-    source: str
     path: str
-    is_symlink: bool = False
     resolved_path: str | None = None
     exists: bool = False
     readable: bool = False
@@ -61,16 +57,6 @@ class CandidateHealth:
     metadata_valid: bool = False
     state: str = "missing"
     detail: str = ""
-    active: bool = False
-
-
-@dataclass(frozen=True)
-class DatabaseHealth:
-    """Keep preferred-source failures visible even when fallback succeeds."""
-
-    candidates: tuple[CandidateHealth, ...]
-    source: str = "none"
-    fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,16 +77,15 @@ class Enrichment:
     asn: LookupResult
 
 
-def _inspect(path: Path, source: str, available: bool) -> CandidateHealth:
-    """Inspect without modifying paths, including dangling stable symlinks."""
-    health = CandidateHealth(source, str(path), reader_available=available)
+def _inspect(path: Path, target: Path, available: bool) -> DatabaseHealth:
+    """Inspect the pinned target, keeping the stable current path in diagnostics."""
+    health = DatabaseHealth(str(path), reader_available=available)
     try:
-        health = replace(health, is_symlink=path.is_symlink())
-        resolved = path.resolve()
+        resolved = target.resolve()
         health = replace(health, resolved_path=str(resolved))
-        stat = path.stat()
+        stat = resolved.stat()
         health = replace(
-            health, exists=True, readable=os.access(path, os.R_OK),
+            health, exists=True, readable=os.access(resolved, os.R_OK),
             mtime_ns=stat.st_mtime_ns,
             generation=(str(resolved), stat.st_dev, stat.st_ino, stat.st_size,
                         stat.st_mtime_ns, stat.st_ctime_ns),
@@ -109,8 +94,7 @@ def _inspect(path: Path, source: str, available: bool) -> CandidateHealth:
             return replace(health, state="unreadable", detail="Path is not readable")
         return replace(health, state="unchecked")
     except FileNotFoundError:
-        state = "broken_symlink" if health.is_symlink else "missing"
-        return replace(health, state=state, detail="Database target is missing")
+        return replace(health, state="missing", detail="Database target is missing")
     except PermissionError as error:
         return replace(health, state="unreadable", detail=str(error)[:240])
     except (OSError, RuntimeError) as error:
@@ -120,16 +104,15 @@ def _inspect(path: Path, source: str, available: bool) -> CandidateHealth:
 class _Database:
     """Own one reader and its generation-specific LRU under the service lock."""
 
-    def __init__(self, kind: str, paths: tuple[Path, Path], cache_size: int):
+    def __init__(self, kind: str, path: Path, cache_size: int):
         self.kind = kind
-        self.paths = paths
+        self.path = path
         self.cache_size = cache_size
         self.reader = None
         self.identity = None
         self.cache = OrderedDict()
-        self.health = DatabaseHealth(())
-        self._validated = {}
-        self._corrupt = {}
+        self.health = DatabaseHealth(str(path))
+        self._corrupt = None
         self._invalid_error = ()
 
     def close(self):
@@ -140,49 +123,33 @@ class _Database:
         if reader is not None:
             reader.close()
 
-    def refresh(self, backend, backend_error: str):
-        """Select the first healthy candidate, retaining both path diagnostics."""
+    def refresh(self, backend, backend_error: str, current: Path):
+        """Reuse the current reader or replace it when the inspected file changes."""
         self._invalid_error = backend.InvalidDatabaseError if backend else ()
-        candidates = []
-        selected = None
-        for source, path in zip(("app-managed", "legacy-system"), self.paths):
-            health = _inspect(path, source, backend is not None)
-            identity = (source, health.generation)
-            if health.state == "unchecked":
-                health = self._validate(health, identity, backend, backend_error,
-                                        selected is None)
-            if selected is None and health.state == "healthy":
-                selected = source
-                health = replace(health, active=True)
-            candidates.append(health)
-        if selected is None:
+        health = _inspect(self.path, current / self.path.name, backend is not None)
+        if health.state == "unchecked":
+            health = self._validate(health, backend, backend_error)
+        if health.state != "healthy":
             self.close()
-        self.health = DatabaseHealth(tuple(candidates), selected or "none",
-                                     selected == "legacy-system")
+        self.health = health
 
-    def _validate(self, health, identity, backend, backend_error, select):
-        """Open candidates for metadata validation; reuse the active generation."""
-        corrupt = self._corrupt.get(health.source)
-        if corrupt and corrupt[0] == health.generation:
-            return replace(health, state="invalid", detail=corrupt[1])
+    def _validate(self, health, backend, backend_error):
+        """Validate metadata once per reader; remember corruption for this file identity."""
+        if self._corrupt and self._corrupt[0] == health.generation:
+            return replace(health, state="invalid", detail=self._corrupt[1])
         if backend is None:
             return replace(health, state="reader_unavailable", detail=backend_error)
-        if identity == self.identity and self.reader is not None:
+        if health.generation == self.identity and self.reader is not None:
             return replace(health, state="healthy", metadata_valid=True)
-        previous = self._validated.get(health.source)
-        if not select and previous and previous.generation == health.generation:
-            return replace(previous, active=False)
         reader = None
         try:
             reader = backend.open_database(health.resolved_path)
             validate_metadata(reader)
-            if select:
-                self.close()
-                self.reader, reader = reader, None
-                self.identity = identity
-            health = replace(health, state="healthy", metadata_valid=True)
-            self._validated[health.source] = health
-            return health
+            self.close()
+            self.reader, reader = reader, None
+            self.identity = health.generation
+            self._corrupt = None
+            return replace(health, state="healthy", metadata_valid=True)
         except PermissionError as error:
             return replace(health, state="unreadable", detail=str(error)[:240])
         except (backend.InvalidDatabaseError, ValueError) as error:
@@ -196,7 +163,7 @@ class _Database:
     def lookup(self, ip: str) -> LookupResult:
         """Cache successful reads, including absent or incomplete records."""
         if self.reader is None:
-            return LookupResult("unavailable", detail="No healthy database selected")
+            return LookupResult("unavailable", detail="Current database is unavailable")
         if ip in self.cache:
             self.cache.move_to_end(ip)
             return self.cache[ip]
@@ -208,14 +175,9 @@ class _Database:
                 result = self._record(self.reader.get(ip))
         except self._invalid_error as error:
             detail = str(error)[:240]
-            source, generation = self.identity
-            self._corrupt[source] = (generation, detail)
-            candidates = tuple(
-                replace(item, state="invalid", detail=detail, active=False)
-                if item.active else item for item in self.health.candidates
-            )
+            self._corrupt = (self.identity, detail)
             self.close()
-            self.health = DatabaseHealth(candidates)
+            self.health = replace(self.health, state="invalid", detail=detail)
             return LookupResult("unavailable", detail=detail)
         except Exception as error:
             return LookupResult("unavailable", detail=str(error)[:240])
@@ -249,9 +211,7 @@ class _Database:
 class GeoIP:
     """Serialize refresh/read/close to prevent reader lifetime races."""
 
-    def __init__(self, data_root: Path | None = None,
-                 legacy_root: Path = Path("/usr/share/GeoIP"),
-                 cache_size: int = CACHE_SIZE):
+    def __init__(self, data_root: Path | None = None, cache_size: int = CACHE_SIZE):
         if cache_size < 1:
             raise ValueError("cache_size must be positive")
         if data_root is None:
@@ -259,29 +219,26 @@ class GeoIP:
         self.data_root = data_root
         self._lock = RLock()
         self._databases = {
-            kind: _Database(kind, (data_root / filename, legacy_root / filename), cache_size)
-            for kind, filename in (("country", Path(GEO_COUNTRY_DB).name),
-                                   ("asn", Path(GEO_ASN_DB).name))
+            kind: _Database(kind, data_root / "current" / f"dbip-{kind}-lite.mmdb", cache_size)
+            for kind in ("country", "asn")
         }
 
     def refresh(self) -> dict[str, DatabaseHealth]:
-        """Check source generations once before report enrichment."""
+        """Pin the current pair once before report enrichment, without any writes."""
         try:
             import maxminddb
             backend, error = maxminddb, ""
         except Exception as exc:
             backend, error = None, str(exc)[:240]
         with self._lock:
-            # Resolve current once so an activation cannot mix candidate months.
+            # Resolve current once so an activation cannot mix generation months.
             current = self.data_root / "current"
             try:
-                managed = current.resolve() if current.is_symlink() else self.data_root
+                current = current.resolve()
             except (OSError, RuntimeError):
-                # Let per-candidate inspection retain diagnostics and legacy fallback.
-                managed = current
-            for kind, database in self._databases.items():
-                database.paths = (managed / f"dbip-{kind}-lite.mmdb", database.paths[1])
-                database.refresh(backend, error)
+                pass  # Each database retains the bounded path-resolution failure.
+            for database in self._databases.values():
+                database.refresh(backend, error, current)
             return self.health()
 
     def health(self) -> dict[str, DatabaseHealth]:
