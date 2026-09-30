@@ -203,7 +203,7 @@ def _bracket_reason(row: EnforcementRow, opening: JailObservation, closing: Jail
         return 'unverifiable', 'closing-action-unavailable'
     if {a.name for a in opening.actions} != {a.name for a in closing.actions}:
         return 'changed-during-check', 'action-identities-changed'
-    before, after = opening.actions, closing.actions
+    before, after = opening.fingerprint, closing.fingerprint
     if row.backend:
         before = next(a for a in opening.actions if a.name == row.action)
         after = next(a for a in closing.actions if a.name == row.action)

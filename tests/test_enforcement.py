@@ -138,6 +138,9 @@ class EnforcementTests(unittest.TestCase):
                 self.assertEqual(self.core.call_count, 2)
                 self.assertEqual(self.actions.call_count, 2)
                 self.assertEqual(self.names.call_count, 2)
+        self.properties['other-notification'] = {'actionban': 'notify'}
+        self.actions.side_effect = [('notification', 'other-notification'), ('other-notification', 'notification')]
+        self.assertEqual(self.row().outcome, 'unsupported-action')
         for reader in (self.nft, self.ipt, self.ufw_status, self.ufw_added, self.ufw_save):
             reader.assert_not_called()
 
