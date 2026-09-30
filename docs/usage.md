@@ -175,20 +175,22 @@ counts outcomes; the table retains each supported **jail / IP / runtime action /
 backend** fact, and selection shows bounded reasons and sibling action names.
 Two supported actions can disagree; both rows remain visible.
 
-Offenders reads current banned IPs and allowlisted runtime action properties,
-proves that Fail2Ban and Offenders share a network namespace, acquires the needed
-scoped firewall views once per backend/object, then rereads relevant current
-bans, actions and daemon/namespace identity. Confirmation requires a stable
-readable bracket and directly observed backend evidence. Unrelated jail-list
-changes do not invalidate a stable jail. Empty jails have one factual row and
-require no action or firewall inspection.
+Offenders reads current banned IPs and allowlisted runtime action properties.
+For supported actions, it proves that Fail2Ban and Offenders share a network
+namespace, acquires scoped firewall views once per backend/object, then rereads
+relevant bans, actions and daemon/namespace identity. Confirmation requires a
+stable readable bracket and directly observed backend evidence. Unsupported
+actions also receive a closing ban/action comparison, with no firewall read or
+namespace requirement. Unrelated jail-list changes do not invalidate a stable
+jail. Empty jails have one opening-only factual row and require no action or
+firewall inspection.
 
 | Outcome | Meaning |
 | --- | --- |
 | `confirmed` | The stable current ban's expected supported enforcement entry was directly observed |
 | `missing` | A stable, readable comparison directly established a required fact was absent |
 | `unverifiable` | Permissions, missing tools, malformed/limited output, action metadata or namespace uncertainty prevent verification |
-| `unsupported-action` | Fully readable characterization found no supported action for this banned IP |
+| `unsupported-action` | Stable, fully readable opening/closing state found no supported action for this banned IP |
 | `changed-during-check` | Readable relevant membership, actions, daemon PID or namespace changed during the bracket |
 | `no-current-bans` | Jail-level opening snapshot has nothing to verify; no missing object is inferred |
 

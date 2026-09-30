@@ -162,6 +162,11 @@ bracketed. Unreadable siblings do not erase supported action rows. Final immutab
 results retain stable reasons, bounded sibling identities and UFW managed/live
 facts, with no raw commands, dumps or diagnostic streams.
 
+Fully readable unsupported action rows also compare closing jail membership and
+action facts. They acquire no firewall evidence and require no namespace equality.
+Opening metadata-unavailable rows remain unverifiable; only `no-current-bans`
+intentionally reports opening membership without a closing comparison.
+
 The screen owns one Textual thread worker per opening/idle recheck, clears rows
 before reacquiring, and rejects cancelled/replaced/closed delivery. Generation
 and immutable row identity form table keys so queued events cannot select a new

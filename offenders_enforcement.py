@@ -186,9 +186,10 @@ def _acquire(jails: tuple[JailObservation, ...]) -> dict[tuple[str, str, str, st
 
 
 def _bracket_reason(row: EnforcementRow, opening: JailObservation, closing: JailObservation,
-                    before_ns: host.NetworkNamespaceIdentity, after_ns: host.NetworkNamespaceIdentity) -> tuple[str, str]:
-    """Unreadability precedes observed change, which precedes direct backend facts."""
-    if after_ns.state == host.NamespaceState.UNAVAILABLE:
+                    before_ns: host.NetworkNamespaceIdentity | None,
+                    after_ns: host.NetworkNamespaceIdentity | None) -> tuple[str, str]:
+    """Unreadability precedes change; namespace proof applies only to backend facts."""
+    if row.backend and after_ns.state == host.NamespaceState.UNAVAILABLE:
         return 'unverifiable', 'closing-namespace-unavailable'
     if closing.reason and closing.reason != 'jail-disappeared':
         return 'unverifiable', 'closing-state-unavailable'
@@ -196,18 +197,23 @@ def _bracket_reason(row: EnforcementRow, opening: JailObservation, closing: Jail
         return 'changed-during-check', 'jail-disappeared'
     if not closing.ips:
         return 'changed-during-check', 'banned-ips-changed'
+    family = 'inet6' if ':' in row.ip else 'inet4'
+    if not row.backend and any(item.reason in ('action-metadata-unavailable', 'ambiguous-action')
+                               for action in closing.actions for item in action.families if item.family == family):
+        return 'unverifiable', 'closing-action-unavailable'
     if {a.name for a in opening.actions} != {a.name for a in closing.actions}:
         return 'changed-during-check', 'action-identities-changed'
-    before = next(a for a in opening.actions if a.name == row.action)
-    after = next(a for a in closing.actions if a.name == row.action)
-    # A removed address family itself is readable membership-change evidence.
-    family = 'inet6' if ':' in row.ip else 'inet4'
-    selected = next((a for a in after.families if a.family == family), None)
-    if selected is not None and selected.reason in ('action-metadata-unavailable', 'ambiguous-action'):
-        return 'unverifiable', 'closing-action-unavailable'
+    before, after = opening.actions, closing.actions
+    if row.backend:
+        before = next(a for a in opening.actions if a.name == row.action)
+        after = next(a for a in closing.actions if a.name == row.action)
+        # A removed address family itself is readable membership-change evidence.
+        selected = next((a for a in after.families if a.family == family), None)
+        if selected is not None and selected.reason in ('action-metadata-unavailable', 'ambiguous-action'):
+            return 'unverifiable', 'closing-action-unavailable'
     if opening.ips != closing.ips:
         return 'changed-during-check', 'banned-ips-changed'
-    if before_ns != after_ns:
+    if row.backend and before_ns != after_ns:
         return 'changed-during-check', 'daemon-namespace-changed'
     complete = all(item.reason not in ('action-metadata-unavailable', 'ambiguous-action')
                    for jail in (opening, closing) for action in jail.actions for item in action.families)
@@ -224,25 +230,32 @@ def check_enforcement() -> EnforcementResult:
         return EnforcementResult(reason='jail-list-unavailable', collected_at=datetime.now(timezone.utc))
     opening = tuple(_observe_jail(name) for name in names)
     rows = tuple(row for jail in opening for row in _opening_rows(jail))
-    before_ns = host.get_fail2ban_namespace()
-    if before_ns.state != host.NamespaceState.SAME:
+    supported = any(row.backend for row in rows)
+    unsupported = any(row.outcome == 'unsupported-action' for row in rows)
+    if not supported and not unsupported:
+        return EnforcementResult(rows, collected_at=datetime.now(timezone.utc))
+    before_ns = host.get_fail2ban_namespace() if supported else None
+    if supported and before_ns.state != host.NamespaceState.SAME:
         reason = 'namespace-mismatch' if before_ns.state == host.NamespaceState.DIFFERENT else 'namespace-unavailable'
         rows = tuple(replace(row, outcome='unverifiable', reason=reason) if row.backend else row for row in rows)
-        return EnforcementResult(rows, collected_at=datetime.now(timezone.utc))
-    if not any(row.backend for row in rows):
-        return EnforcementResult(rows, collected_at=datetime.now(timezone.utc))
-    evidence = _acquire(opening)
+        if not unsupported:
+            return EnforcementResult(rows, collected_at=datetime.now(timezone.utc))
+    evidence = _acquire(opening) if supported and before_ns.state == host.NamespaceState.SAME else {}
     try:
         active = set(f2b.get_jail_list())
         closing = {jail.jail: _observe_jail(jail.jail) if jail.jail in active else
                    JailObservation(jail.jail, reason='jail-disappeared') for jail in opening if jail.ips}
     except READ_ERRORS:
         closing = {jail.jail: JailObservation(jail.jail, reason='jail-list-unavailable') for jail in opening}
-    after_ns = host.get_fail2ban_namespace()
+    after_ns = host.get_fail2ban_namespace() if evidence else None
     before = {jail.jail: jail for jail in opening}
     final = []
     for row in rows:
-        if not row.backend:
+        if row.outcome == 'unsupported-action':
+            outcome, reason = _bracket_reason(row, before[row.jail], closing[row.jail], None, None)
+            final.append(replace(row, outcome=outcome or row.outcome, reason=reason or row.reason))
+            continue
+        if row.identity not in evidence:
             final.append(row)
             continue
         result = evidence[row.identity]

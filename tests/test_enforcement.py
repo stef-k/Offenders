@@ -114,6 +114,8 @@ class EnforcementTests(unittest.TestCase):
         self.assertEqual((row.outcome, row.ip, row.action, row.backend), ('no-current-bans', '', '', ''))
         self.actions.assert_not_called()
         self.nft.assert_not_called()
+        self.list.assert_called_once()
+        self.core.assert_called_once()
         self.core.return_value = status()
         self.properties = {'notification': {'actionban': 'notify'}}
         row = self.row()
@@ -121,6 +123,100 @@ class EnforcementTests(unittest.TestCase):
         self.names.side_effect = Fail2BanParseError('private raw diagnostics')
         self.assertEqual(self.row().outcome, 'unverifiable')
         self.nft.assert_not_called()
+
+    def test_stable_unsupported_action_is_bracketed_without_firewall_reads(self):
+        """Readable unsupported state needs closing Fail2Ban facts, not namespace proof."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for state in (NamespaceState.SAME, NamespaceState.DIFFERENT, NamespaceState.UNAVAILABLE):
+            with self.subTest(namespace=state):
+                self.namespace.return_value = replace(SAME, state=state)
+                self.core.reset_mock()
+                self.actions.reset_mock()
+                self.names.reset_mock()
+                row = self.row()
+                self.assertEqual((row.outcome, row.reason), ('unsupported-action', 'unsupported-action'))
+                self.assertEqual(self.core.call_count, 2)
+                self.assertEqual(self.actions.call_count, 2)
+                self.assertEqual(self.names.call_count, 2)
+        for reader in (self.nft, self.ipt, self.ufw_status, self.ufw_added, self.ufw_save):
+            reader.assert_not_called()
+
+    def test_unsupported_ban_changes_and_jail_disappearance(self):
+        """Removed or added bans and a vanished jail invalidate opening unsupported facts."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for closing in (status(()), status((IP, '192.0.2.9'))):
+            with self.subTest(closing=closing.banned_ips):
+                self.core.side_effect = [status(), closing]
+                row = self.row()
+                self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'banned-ips-changed'))
+        self.core.side_effect = None
+        self.list.side_effect = [['guard'], []]
+        row = self.row()
+        self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'jail-disappeared'))
+
+    def test_unsupported_action_identity_and_readable_shape_changes(self):
+        """Unsupported facts become stale when identities, properties or support change."""
+        for closing in ({'other': {'actionban': 'notify'}},
+                        {'notification': {'actionban': 'notify-other'}},
+                        {'notification': dict(NFT)}):
+            with self.subTest(closing=closing):
+                states = iter(({'notification': {'actionban': 'notify'}}, closing))
+                def list_jails():
+                    """Change runtime facts exactly at the closing Fail2Ban boundary."""
+                    self.properties = next(states)
+                    return ['guard']
+                self.list.side_effect = list_jails
+                self.assertEqual(self.row().outcome, 'changed-during-check')
+        self.nft.assert_not_called()
+
+    def test_unsupported_closing_metadata_unreadable(self):
+        """Closing read failures outrank changes without inventing supported evidence."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for reader, opening in ((self.list, ['guard']), (self.core, status()),
+                                (self.actions, ('notification',)), (self.names, ('actionban',)),
+                                (self.value, 'notify')):
+            with self.subTest(reader=reader):
+                original = reader.side_effect
+                try:
+                    reader.side_effect = [opening, Fail2BanParseError('private diagnostics')]
+                    self.assertEqual(self.row().outcome, 'unverifiable')
+                finally:
+                    reader.side_effect = original
+        self.core.side_effect = [status(), status((IP, '192.0.2.9'))]
+        self.names.side_effect = [('actionban',), Fail2BanParseError('private diagnostics')]
+        self.assertEqual(self.row().outcome, 'unverifiable')
+
+    def test_mixed_supported_and_unsupported_rows_share_closing_state(self):
+        """Another jail's unsupported race cannot bypass closing or erase supported evidence."""
+        ipv6 = '2001:db8::1'
+        self.list.return_value = ['guard', 'notifications']
+        self.core.side_effect = lambda jail: status((IP,)) if jail == 'guard' else status((ipv6,))
+        self.actions.side_effect = lambda jail: ('packet-action',) if jail == 'guard' else ('notification',)
+        self.properties['notification'] = {'actionban': 'notify'}
+        def change_unsupported(actions):
+            """Mutate only the unsupported jail's facts during supported acquisition."""
+            self.properties['notification']['actionban'] = 'notify-other'
+            return self.nft.return_value
+        self.nft.side_effect = change_unsupported
+        rows = enforcement.check_enforcement().rows
+        self.assertEqual([(row.ip, row.outcome) for row in rows],
+                         [(IP, 'confirmed'), (ipv6, 'changed-during-check')])
+        self.assertEqual(rows[0].backend_reason, 'entry-observed')
+        self.assertEqual(rows[1].backend_reason, '')
+        self.nft.assert_called_once()
+        self.assertEqual(len(self.nft.call_args.args[0]), 1)
+        self.ipt.assert_not_called()
+        self.ufw_status.assert_not_called()
+
+        for namespace in ([replace(SAME, state=NamespaceState.DIFFERENT)],
+                          [NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)],
+                          [SAME, NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)]):
+            with self.subTest(namespace=namespace):
+                self.namespace.side_effect = namespace
+                self.core.reset_mock()
+                rows = enforcement.check_enforcement().rows
+                self.assertEqual([row.outcome for row in rows], ['unverifiable', 'unsupported-action'])
+                self.assertEqual(self.core.call_count, 4)
 
     def test_supported_action_survives_unclassified_or_unreadable_sibling(self):
         """A sibling is retained as bounded detail without erasing a supported result."""
