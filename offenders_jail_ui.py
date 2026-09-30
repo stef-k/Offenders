@@ -15,7 +15,7 @@ from offenders_report import Report
 
 
 def jail_details(jail: str, report: Report) -> Text:
-    """Keep live counters distinct from history and preserve unavailable values."""
+    """Preserve unavailable numeric settings; omit uncollected optional identities."""
     lines = [
         f"Jail: {jail}",
         f"Historical period: {report.period}",
@@ -35,10 +35,12 @@ def jail_details(jail: str, report: Report) -> Text:
             ("Bantime (seconds)", status.bantime),
             ("Findtime (seconds)", status.findtime),
             ("Maxretry", status.maxretry),
-            ("Backend", status.backend),
-            ("Filter", status.filter_name),
         ):
             lines.append(f"{label}: {'Unavailable' if value is None else value}")
+        if status.backend is not None:
+            lines.append(f"Backend: {status.backend}")
+        if status.filter_name is not None:
+            lines.append(f"Filter: {status.filter_name}")
     lines.extend(["", "Current banned IPs (live Fail2Ban snapshot)"])
     if status is None:
         lines.append("Unavailable — jail not active in latest successful refresh")

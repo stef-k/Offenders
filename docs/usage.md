@@ -133,9 +133,10 @@ clipboard exception. Command-output `c` copies output, not a table selection.
 
 Open a jail from Active bans per jail. Counters and available bantime/findtime/
 maxretry settings are live values, independent of period history. Unavailable
-settings are not zero; backend/filter identity may be unavailable. Current banned
-IPs are separate from historical bans: `(none)` means a valid empty current list,
-while an inactive jail has unavailable current membership.
+numeric settings are not zero. Backend/filter identities appear only when
+present in the report. Current banned IPs are separate from historical bans:
+`(none)` means a valid empty current list, while an inactive jail has unavailable
+current membership.
 
 Jail history is newest first and expands within the selected period. Opening or
 expanding detail reuses the last successful report without extra collection.
