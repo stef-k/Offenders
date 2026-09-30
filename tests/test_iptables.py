@@ -68,6 +68,52 @@ class IptablesTests(unittest.TestCase):
         self.assertEqual(self.evidence(save_text('2001:db8::1', 'REJECT --reject-with icmp6-port-unreachable'),
                                        '2001:db8::1', v6).outcome, 'confirmed')
 
+    def test_concrete_parent_ignores_start_and_start_never_confirms(self):
+        """Concrete-chain callers need no start facts; start alone proves no live jump."""
+        self.assertEqual(ipt.classify_iptables_action({**PROPERTIES, 'actionstart': 'arbitrary; command'}), self.action)
+        properties = {**PROPERTIES, 'chain': '<known/chain>', 'actionstart': ACTIONSTART}
+        action = ipt.classify_iptables_action(properties)
+        without_jump = save_text().replace('-A INPUT -p tcp -m multiport --dports 22,2222 -j f2b-guard\n', '')
+        self.assertEqual(self.evidence(without_jump, action=action).reason, 'parent-jump-absent')
+
+    def test_start_parent_is_not_hardcoded_and_stock_scopes_agree(self):
+        """Oneport/allports and a concrete custom parent retain the same direct model."""
+        oneport = ACTIONSTART.replace('INPUT', 'PUBLIC_FILTER').replace('-m multiport --dports http,https', '--dport ssh')
+        allports = ACTIONSTART.replace(' -m multiport --dports http,https', '').replace("'tcp'", "'tcp,udp'")
+        self.assertEqual(ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>',
+                                                     'actionstart': oneport}).parent_chain, 'PUBLIC_FILTER')
+        self.assertEqual(ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>',
+                                                     'actionstart': allports}).parent_chain, 'INPUT')
+
+    def test_unqualified_start_cannot_authorize_a_parent(self):
+        """Reject missing, ambiguous, unresolved, unsafe and custom command structures."""
+        cases = {
+            'absent': '',
+            'malformed': ACTIONSTART.replace('done', ''),
+            'non-shell-whitespace': ACTIONSTART.replace('-C INPUT', '-C\u2005INPUT'),
+            'parent-mismatch': ACTIONSTART.replace('-I INPUT', '-I OUTPUT'),
+            'multiple-parents': ACTIONSTART + '\n' + ACTIONSTART.replace('INPUT', 'OUTPUT'),
+            'unresolved-parent': ACTIONSTART.replace('INPUT', '$chain'),
+            'multiple-chains': ACTIONSTART.replace('INPUT', 'INPUT,OUTPUT'),
+            'unsafe-parent': ACTIONSTART.replace('INPUT', 'INPUT;other'),
+            'option-parent': ACTIONSTART.replace('INPUT', '-INPUT'),
+            'wrong-target': ACTIONSTART.replace('f2b-guard', 'f2b-other'),
+            'insert-target-mismatch': ACTIONSTART.replace('-j f2b-guard; }\ndone', '-j f2b-other; }\ndone'),
+            'scope-mismatch': ACTIONSTART.replace('-I INPUT -p $proto', '-I INPUT -p tcp'),
+            'custom-prefix': 'arbitrary; ' + ACTIONSTART,
+            'custom-suffix': ACTIONSTART + '; arbitrary',
+            'custom-loop': ACTIONSTART.replace("echo 'tcp'", 'custom'),
+            'oversized': ACTIONSTART + ' ' * 65536,
+        }
+        for reason, raw in cases.items():
+            with self.subTest(reason=reason), self.assertRaises(Fail2BanParseError):
+                ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>', 'actionstart': raw})
+        with self.assertRaises(Fail2BanParseError):
+            ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>'})
+        # Whitespace or an indirect reference does not activate the exact sentinel fallback.
+        with self.assertRaises(Fail2BanParseError):
+            ipt.classify_iptables_action({**PROPERTIES, 'chain': ' <known/chain>', 'actionstart': ACTIONSTART})
+
     def test_required_direct_facts_are_independent(self):
         """An unrelated table or chain cannot provide a missing filter fact."""
         output = save_text()

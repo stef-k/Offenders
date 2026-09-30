@@ -74,7 +74,7 @@ Cmnd_Alias OFFENDERS_ENFORCEMENT = \
     /usr/bin/fail2ban-client ^status [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
     /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actions$, \
     /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actionproperties [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
-    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} action [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} (actionban|name|nftables|table_family|table|chain|chain_type|chain_hook|addr_set(\?family=inet6)?|blocktype(\?family=inet6)?|iptables(\?family=inet6)?|lockingopt|add|destination|application|comment|kill-mode|kill)$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} action [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} (actionban|actionstart|name|nftables|table_family|table|chain|chain_type|chain_hook|addr_set(\?family=inet6)?|blocktype(\?family=inet6)?|iptables(\?family=inet6)?|lockingopt|add|destination|application|comment|kill-mode|kill)$, \
     /usr/sbin/nft ^--json --numeric list table (inet|ip|ip6) [A-Za-z0-9_][A-Za-z0-9_.:+-]{0,127}$, \
     /usr/sbin/iptables-save "", /usr/sbin/ip6tables-save "", \
     /usr/sbin/iptables-nft-save "", /usr/sbin/ip6tables-nft-save "", \
@@ -94,6 +94,9 @@ Only supported runtime action descriptors authorize firewall reads. Native nft
 uses `nft --json --numeric list table FAMILY TABLE`; iptables uses the matching
 bare save binary; UFW uses only `ufw status`, `ufw show added` and bare
 `iptables-save` / `ip6tables-save`. There is no fallback or mutation command.
+The additional `actionstart` read is used only when advertised and runtime
+`chain` is exactly `<known/chain>`, to identify one stock-compatible iptables
+parent chain. Its text is never executed; `known/chain` is never queried.
 Namespace proof uses non-sudo
 `systemctl show --property=MainPID --value fail2ban.service` plus current-user
 reads of `/proc/self/ns/net` and `/proc/<MainPID>/ns/net`. A mismatch or unreadable

@@ -148,7 +148,7 @@ actions or firewall bracket. Namespace proof precedes every firewall reader.
 
 Three explicit classifiers select exactly one descriptor per action/IP family;
 ambiguity fails closed. A supported action can coexist with unclassified or
-unreadable siblings. Backend parsers/readers remain unchanged: nft table scopes,
+unreadable siblings. Backend acquisition remains scoped: nft table scopes,
 iptables save binaries and UFW families are deduplicated by their reviewed
 readers. UFW status and added rules are acquired once per check. Separate
 iptables and UFW reads remain separate evidence contracts even when both use
@@ -285,6 +285,8 @@ eight-second, non-interactive sudo runner. Action identities are validated befor
 reuse; discovered property names never grant query permission. The finite
 `ACTION_PROPERTIES` whitelist covers stock 1.0.2/1.1.0 actionban/static identifiers,
 IPv6 overrides, and UFW rule/kill scope, including iptables' `lockingopt` reference.
+It also permits raw `actionstart` reads/fingerprints, without adding that command
+to `ACTION_BASE_PROPERTIES` or enabling static resolution of it or `known/*`.
 Action text has a 64 KiB parser/retention bound and each jail has at most 32 actions;
 limits reject evidence rather than silently truncating it.
 
@@ -353,6 +355,21 @@ qualify. Custom executable paths, wrappers, compound commands, arbitrary targets
 and extra executable flags are unsupported. Missing, unsafe or unresolved
 properties raise `Fail2BanParseError`; supported targets are DROP and REJECT,
 including finite family-specific REJECT replies.
+
+Concrete runtime `chain` values keep the static resolution path. Only an exact
+raw `chain=<known/chain>` uses the public raw `actionstart` value instead: this
+config-reader sentinel is not a readable `CommandAction` property. The shared
+observation builder excludes `actionstart` from normal advertised-property reads
+and acquires it only when advertised and the successfully read chain is exactly
+that sentinel. Its exact value participates in both bracket fingerprints.
+
+The bounded start matcher accepts the stock RETURN-tail setup and one protocol
+loop with oneport, multiport or allports scope. The direct parent `-C` check and
+`-I` insert must agree on one concrete `CHAIN_ID`, identical scope and the exact
+already-derived `f2b-<name>` target. Missing, unresolved, unsafe, multiple-parent
+or custom syntax remains unverifiable. This raw text is never statically resolved,
+shell-evaluated or executed. It supplies expected configuration only; the existing
+save verifier independently proves the live parent jump and host rule.
 
 `read_iptables_saves` reads each selected compatibility view once through
 `sudo -n <matching-binary>-save`, with **no arguments** and an eight-second

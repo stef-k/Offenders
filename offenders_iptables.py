@@ -87,7 +87,7 @@ def _start_parent_chain(raw: str, ban_chain: str) -> str:
     through agreeing direct parent check/insert rules with identical scope.
     This supplies expected configuration, not independently observed enforcement.
     """
-    text = ' '.join(parse_action_property(raw).split())
+    text = re.sub(r'[ \t\n]+', ' ', parse_action_property(raw)).strip(' ')
     target = re.escape(ban_chain)
     protocol = r'[A-Za-z0-9][A-Za-z0-9_-]{0,31}'
     port = r'[A-Za-z0-9][A-Za-z0-9_:-]{0,63}'

@@ -12,7 +12,7 @@ import offenders_ufw as ufw
 from offenders_fail2ban import JailStatus, Fail2BanParseError, CommandFailure, CommandResult
 from offenders_host import NetworkNamespaceIdentity, NamespaceState
 from test_nftables import PROPERTIES as NFT
-from test_iptables import PROPERTIES as IPT, save_text
+from test_iptables import ACTIONSTART, PROPERTIES as IPT, save_text
 from test_ufw import PROPERTIES as UFW
 
 FIXTURES = Path(__file__).parent / 'fixtures'
@@ -271,16 +271,71 @@ class EnforcementTests(unittest.TestCase):
         self.properties['packet-action']['arbitrary'] = 'never queried'
         self.properties['second'] = dict(IPT)
         self.properties['third'] = dict(UFW)
+        for properties in self.properties.values():
+            properties['actionstart'] = 'never read for concrete/nft/UFW actions'
         self.core.return_value = status((IP, '2001:db8::1'))
         result = enforcement.check_enforcement()
         self.assertEqual(len(result.rows), 6)
         self.assertNotIn('arbitrary', [c.args[2] for c in self.value.call_args_list])
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
         for reader in [self.nft, self.ipt, self.ufw_save]:
             reader.assert_called_once()
             self.assertEqual(len(reader.call_args.args[0]), 2)
         self.ufw_status.assert_called_once()
         self.ufw_added.assert_called_once()
         self.assertEqual(result.rows[2].connection_termination, 'not-requested')
+
+    def test_exact_sentinel_conditionally_reads_start_in_both_brackets(self):
+        """Only the exact sentinel reads start; public known/* discovery grants nothing."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>', 'actionstart': ACTIONSTART,
+                                             'known/chain': 'never read', 'arbitrary': 'never read'}}
+        self.core.return_value = status((IP, '2001:db8::1'))
+        self.assertEqual([row.outcome for row in enforcement.check_enforcement().rows], ['confirmed', 'confirmed'])
+        queried = [c.args[2] for c in self.value.call_args_list]
+        self.assertEqual(queried.count('actionstart'), 2)
+        self.assertNotIn('known/chain', queried)
+        self.assertNotIn('arbitrary', queried)
+        self.ipt.assert_called_once()
+        self.properties['packet-action']['chain'] = ' <known/chain>'
+        self.value.reset_mock()
+        self.assertTrue(all(row.outcome == 'unverifiable' for row in enforcement.check_enforcement().rows))
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+
+    def test_sentinel_without_readable_advertised_start_fails_closed(self):
+        """Missing, unadvertised or failed start/chain reads authorize no firewall read."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>'}}
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.properties['packet-action']['actionstart'] = ACTIONSTART
+        self.names.side_effect = lambda jail, act: tuple(prop for prop in self.properties[act] if prop != 'actionstart')
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.names.side_effect = lambda jail, act: tuple(self.properties[act])
+        original = self.value.side_effect
+        def denied_start(jail, act, prop):
+            """Fail at the new runtime read without returning partial expected wiring."""
+            if prop == 'actionstart':
+                raise Fail2BanParseError('denied')
+            return original(jail, act, prop)
+        self.value.side_effect = denied_start
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.value.reset_mock()
+        self.value.side_effect = Fail2BanParseError('chain unreadable')
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.ipt.assert_not_called()
+        self.nft.assert_not_called()
+
+    def test_start_change_invalidates_otherwise_stable_firewall_evidence(self):
+        """Queried raw start participates even when whitespace preserves its descriptor."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>', 'actionstart': ACTIONSTART}}
+        def change_start(actions):
+            """Change only start text after live evidence acquisition."""
+            self.properties['packet-action']['actionstart'] = ACTIONSTART.replace('\n', '\n  ')
+            return self.ipt.return_value
+        self.ipt.side_effect = change_start
+        row = self.row()
+        self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'action-changed'))
 
     def test_real_readers_deduplicate_by_reviewed_scope(self):
         """Integration fans out once; reviewed readers issue one command per scope."""

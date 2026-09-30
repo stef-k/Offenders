@@ -78,6 +78,13 @@ read is conservatively unverifiable, without salvaging a partial snapshot.
 
 ## Iptables compatibility save output
 
+`iptables-actionstart.txt` adapts the stock Fail2Ban 1.0.2 runtime multiport start
+shape, using synthetic `f2b-guard` identity. Its RETURN-tail setup, protocol loop
+and agreeing parent check/insert pair follow upstream `iptables.conf` linked
+below. Runtime `chain=<known/chain>` is a config-reader sentinel; the public
+`actionstart` already contains the concrete parent. The fixture proves expected
+configuration parsing, not firewall state or representative-host acceptance.
+
 `tests/test_iptables.py` uses small synthetic IPv4/IPv6 save snapshots with RFC
 documentation addresses, chain declarations, stock multiport parent jumps,
 source-only REJECT/DROP rules and RETURN tails. An unrelated `*nat` section

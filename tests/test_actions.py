@@ -70,10 +70,26 @@ class ActionTests(unittest.TestCase):
                     f2b.get_action_properties('sshd', action)
                 with self.assertRaises(f2b.Fail2BanParseError):
                     f2b.get_action_property('sshd', action, 'name')
-            for prop in ['timeout', '__dict__', 'ban', 'name?family=other', 'name?family=inet6', 'unknown']:
+            for prop in ['timeout', '__dict__', 'ban', 'name?family=other', 'name?family=inet6', 'unknown',
+                         'known/chain', 'known/name', 'actionstart?family=inet6']:
                 with self.assertRaises(f2b.Fail2BanParseError):
                     f2b.get_action_property('sshd', 'guard-main', prop)
         runner.assert_not_called()
+
+    def test_actionstart_is_raw_read_and_fingerprint_evidence_only(self):
+        """The new literal selector authorizes no static or known/* resolution."""
+        raw = '{ <iptables> -C INPUT -j f2b-guard; }'
+        with patch.object(f2b, 'run_host_command', return_value=f2b.CommandResult(0, raw + '\n', '')) as runner:
+            self.assertEqual(f2b.get_action_property('sshd', 'guard-main', 'actionstart'), raw)
+        runner.assert_called_once_with(
+            ['fail2ban-client', 'get', 'sshd', 'action', 'guard-main', 'actionstart'], timeout=8, sudo=True)
+        before = f2b.action_fingerprint('sshd', {'guard-main': {'actionstart': raw}})
+        after = f2b.action_fingerprint('sshd', {'guard-main': {'actionstart': raw.replace('INPUT', 'OUTPUT')}})
+        self.assertNotEqual(before, after)
+        with self.assertRaises(f2b.Fail2BanParseError):
+            f2b.resolve_action_property({'actionstart': raw}, 'actionstart')
+        with self.assertRaises(f2b.Fail2BanParseError):
+            f2b.resolve_action_property({'name': '<actionstart>', 'actionstart': 'guard'}, 'name')
 
     def test_command_failure_is_not_parsed(self):
         """A failed action read retains the existing command-error taxonomy."""
