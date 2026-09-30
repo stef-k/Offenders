@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Default Coverage to an independent 7d window with local 7d/24h switching;
+  expose suppressed decisions and their reasons, keep validation candidate-only,
+  and show only working Coverage controls (#120).
+
 - Add top-level `--help`/`-h` CLI discovery and `--version`/`-V` installed-version
   reporting without acquisition; share the TUI version authority and point TUI
   command guidance to CLI help (#108).

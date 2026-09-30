@@ -14,11 +14,12 @@ def current_row_key(table: DataTable) -> RowKey | None:
 
 
 def event_row_key(
-    event: DataTable.RowHighlighted | DataTable.RowSelected | DataTable.CellSelected,
+    event: DataTable.RowHighlighted | DataTable.RowSelected | DataTable.CellSelected | DataTable.CellHighlighted,
 ) -> RowKey | None:
     """Accept only an event still identifying the table's current selection."""
     table = event.data_table
-    if isinstance(event, DataTable.CellSelected):
+    cell_event = isinstance(event, (DataTable.CellSelected, DataTable.CellHighlighted))
+    if cell_event:
         key = event.cell_key.row_key if event.cell_key is not None else None
         coordinate = event.coordinate
         if not 0 <= coordinate.column < len(table.columns):
@@ -28,7 +29,7 @@ def event_row_key(
         key, row = event.row_key, event.cursor_row
     if key is None or row != table.cursor_row or key != current_row_key(table):
         return None
-    if isinstance(event, DataTable.CellSelected):
+    if cell_event:
         if event.cell_key != table.coordinate_to_cell_key(event.coordinate):
             return None
     return key

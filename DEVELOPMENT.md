@@ -254,6 +254,14 @@ Coverage never runs during normal dashboard refresh. No path writes Fail2Ban
 configuration, reloads/enables jails, or bans/unbans addresses. See the
 [Coverage guide](docs/coverage.md) for the operator review workflow.
 
+The Coverage screen explicitly passes its local 7d/24h lookback through
+`run_analysis(lookback)` to the collector; the generic collector default stays
+24h. Opening uses 7d and local period changes run single-flight, clearing old
+evidence before acquisition and committing the period/result only on success.
+The full-screen modal exposes existing ordered decisions, gates validation by
+candidate class and isolates dashboard bindings. Policy and thresholds stay in
+`offenders_findings.py`; no period persistence or automatic analysis is added.
+
 ## Command and safety boundary
 
 `offenders_fail2ban.run_host_command` accepts an argv array, uses no shell, closes
