@@ -332,9 +332,9 @@ with the configured drop/reject verdict in the same rule. The supported JSON
 subset covers stock multiport/allports matches and optional counters. Prefix,
 interval, timed-element and unfamiliar rule forms remain unverifiable. Reasons
 are bounded identities rather than command output. These are direct backend
-facts: later integration must establish namespace identity and opening/closing
-ban/action stability before publishing confirmed/missing outcomes. There is no
-dashboard, ordinary Report, export, or full race-bracket caller in this child.
+facts: `offenders_enforcement` establishes namespace identity and opening/closing
+ban/action stability before publishing confirmed/missing outcomes. The backend
+itself has no Textual, ordinary Report or export responsibility.
 
 ### Iptables compatibility direct evidence
 
@@ -366,8 +366,8 @@ exact source-only host rule with the configured terminal DROP/REJECT target.
 Bare hosts and /32 or /128 normalize identically; networks, unrelated chains and
 custom jump paths cannot confirm a ban. Unfamiliar relevant rule forms stay
 unverifiable, and no recursive chain traversal or packet-path evaluation occurs.
-Later integration owns namespace and opening/closing ban/action stability gates;
-this backend has no UI, ordinary Report, export or full race-bracket caller.
+`offenders_enforcement` owns namespace and opening/closing ban/action stability
+gates; this backend has no Textual, ordinary Report or export responsibility.
 
 ### UFW direct evidence
 
@@ -430,8 +430,8 @@ the evidence as a whole.
 The Ubuntu 24.04 disposable-container captures and sudo/locale qualification are
 documented in [fixture provenance](tests/fixtures/README.md#ufw-status-and-live-save-output).
 They establish the output contract, not full supported-host acceptance. Later
-integration owns namespace and opening/closing action/ban stability gates;
-this backend has no UI, ordinary Report/export caller, timer or race orchestrator.
+`offenders_enforcement` owns namespace and opening/closing action/ban stability
+gates; this backend has no Textual, ordinary Report/export or timer responsibility.
 Direct rule observation does not prove packet reachability or arbitrary UFW
 before/after rule correctness. #113 owns the consolidated feature changelog.
 
