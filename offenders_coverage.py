@@ -122,6 +122,12 @@ class CoverageInventory:
     services_without_sources: tuple[InsufficientFact, ...]
 
 
+def _permission_limitation(path: Path) -> str:
+    """Describe denied static configuration access without Python error formatting."""
+    return (f"Static Fail2Ban configuration unavailable: the current user cannot read {path}. "
+            "Coverage results may be incomplete.")[:300]
+
+
 def _config_paths(root: Path) -> tuple[list[Path], tuple[str, ...]]:
     """Enumerate only direct fixed directories, stopping at the candidate bound."""
     paths = []
@@ -148,6 +154,8 @@ def _config_paths(root: Path) -> tuple[list[Path], tuple[str, ...]]:
                     if len(paths) > MAX_CONFIG_FILES:
                         # Do not select an arbitrary filesystem-order subset.
                         return [], ("Configuration candidate count exceeds bound",)
+    except PermissionError:
+        limitations.append(_permission_limitation(root))
     except (OSError, RuntimeError) as error:
         limitations.append(f"Configuration enumeration unavailable: {error}"[:300])
     return sorted(paths), tuple(limitations)
@@ -185,6 +193,10 @@ class _ConfigReader:
             parser = configparser.RawConfigParser(interpolation=None, strict=True)
             parser.read_string(content.decode("utf-8"), source=str(path))
             fragment = ConfigFragment(str(path), str(resolved))
+        except PermissionError:
+            fragment = ConfigFragment(str(path), str(resolved) if resolved else None,
+                                      (_permission_limitation(path),))
+            parser = None
         except (OSError, RuntimeError, ValueError, configparser.Error) as error:
             fragment = ConfigFragment(str(path), str(resolved) if resolved else None,
                                       (f"{path}: {error}"[:300],))
@@ -287,6 +299,8 @@ def discover_static(root: Path = Path("/etc/fail2ban")) -> StaticInventory:
     root = Path(root).absolute()
     try:
         root = root.resolve(strict=True)
+    except PermissionError:
+        return StaticInventory((), (), (), (_permission_limitation(root),), False)
     except (OSError, RuntimeError) as error:
         return StaticInventory((), (), (), (f"Configuration root unavailable: {error}"[:300],), False)
     paths, errors = _config_paths(root)

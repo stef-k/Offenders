@@ -94,9 +94,11 @@ def finding_detail(decision: FindingDecision) -> str:
     if group.timestamp_basis in ("local_wall", "unknown"):
         lines.append("The exact UTC lookback could not be enforced.")
     lines.extend(("", "Current coverage (source monitoring does not establish filter success):"))
+    empty_relevance = ("none established" if decision.relevance_evaluated else
+                       "not evaluated for this suppressed decision")
     for label, matches in (("Relevant running jail", decision.running_filters),
                            ("Retained disabled jail", decision.disabled_candidates)):
-        lines.append(f"{label}: " + ("; ".join(f"{m.name} / filter {m.filter_stem}" for m in matches) or "none established"))
+        lines.append(f"{label}: " + ("; ".join(f"{m.name} / filter {m.filter_stem}" for m in matches) or empty_relevance))
     lines.append("Coverage classifications: " + ", ".join(dict.fromkeys(
         target.classification for target in decision.coverage_targets)))
     lines.extend(("", "Representative examples:", *group.examples[:3], "", "Limitations:"))

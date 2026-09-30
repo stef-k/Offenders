@@ -61,6 +61,43 @@ class PresentationTests(unittest.TestCase):
                           'no_obvious_match', *decision.group.examples, *decision.limitations):
                 self.assertIn(value, text)
 
+    def test_early_suppression_reports_relevance_as_not_evaluated(self):
+        """Source monitoring survives early gates without claiming filter relevance."""
+        cases = ({'count': 1}, {'global_ips': 0}, {'state': 'installed_inactive'},
+                 {'analysis': 'unavailable'})
+        for options in cases:
+            with self.subTest(options=options):
+                inventory = build_findings(*fixture(**options, classification='covered_enabled',
+                    running=(('live', 'sshd'),), disabled=(('spare', 'sshd'),)))
+                decision = inventory.decisions[0]
+                self.assertFalse(inventory.findings)
+                self.assertFalse(decision.running_filters)
+                self.assertFalse(decision.disabled_candidates)
+                text = ui.finding_detail(decision)
+                self.assertIn('Coverage classifications: covered_enabled', text)
+                for label in ('Relevant running jail', 'Retained disabled jail'):
+                    self.assertIn(f'{label}: not evaluated for this suppressed decision', text)
+                    self.assertNotIn(f'{label}: none established', text)
+
+    def test_policy_evaluated_details_keep_concrete_relevance_and_empty_results(self):
+        """Evaluated candidates, enabled suppression and unknown relevance retain semantics."""
+        cases = (({'disabled': (('spare', 'sshd'),)}, 'existing_disabled_candidate',
+                  'none established', 'spare / filter sshd'),
+                 ({'running': (('live', 'sshd'),), 'count': 20}, 'enabled_tuning_question',
+                  'live / filter sshd', 'none established'),
+                 ({'running': (('live', 'sshd'),)}, 'enabled_relevant_below_tuning_threshold',
+                  'live / filter sshd', 'none established'),
+                 ({'running': (('live', None),)}, 'insufficient_evidence',
+                  'none established', 'none established'))
+        for options, classification, running, disabled in cases:
+            with self.subTest(classification=classification):
+                decision = build_findings(*fixture(**options)).decisions[0]
+                self.assertEqual(decision.classification, classification)
+                text = ui.finding_detail(decision)
+                self.assertIn(f'Relevant running jail: {running}', text)
+                self.assertIn(f'Retained disabled jail: {disabled}', text)
+                self.assertNotIn('not evaluated', text)
+
     def test_candidate_details_and_time_domains(self):
         cases = [({'disabled': (('spare', 'sshd'),)}, 'Filter suitability is not yet established'),
                  ({'running': (('live', 'sshd'),), 'count': 20}, 'does not prove the jail failed'),
