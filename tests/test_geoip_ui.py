@@ -62,6 +62,9 @@ class PresentationTests(unittest.TestCase):
                      "Active generation: first", "Observed local file age:", "Python MMDB reader: available"):
             self.assertIn(fact, text)
         self.assertNotIn("Use Update now", text)
+        aliased = replace(good, path="/data-alias/current/dbip-country-lite.mmdb")
+        text = str(ui.diagnostics({"country": aliased}, Path("/data-alias"), {}, ""))
+        self.assertIn("Active generation: first", text)
         invalid = replace(healthy(age=63 * 86400), state="invalid")
         text = str(ui.diagnostics({"country": invalid}, Path("/data"), {}, ""))
         self.assertNotIn("still usable", text)

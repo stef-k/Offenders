@@ -60,7 +60,7 @@ def diagnostics(health, root, state, feedback):
                       f"  Python MMDB reader: {'available' if database.reader_available else 'unavailable'}"))
         if database.resolved_path:
             parent = Path(database.resolved_path).parent
-            if parent.parent == root.absolute() / "generations":
+            if parent.parent.name == "generations":
                 lines.append(f"  Active generation: {parent.name}")
         if database.mtime_ns is not None:
             days = max(0, (time.time() - database.mtime_ns / 1e9) / 86400)

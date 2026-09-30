@@ -27,7 +27,7 @@ def main(argv=None):
                 active_paths = [Path(value.resolved_path) for value in health.values()
                                 if value.resolved_path]
                 generation = next((path.parent.name for path in active_paths
-                                   if path.parent.parent == root.absolute() / "generations"), None)
+                                   if path.parent.parent.name == "generations"), None)
                 state = read_state(root)
                 print(json.dumps({
                     "generation": generation,

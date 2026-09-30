@@ -189,8 +189,10 @@ class LifecycleTests(unittest.TestCase):
         self.run_update()
         active = (self.root / "current").resolve()
         (active / "dbip-asn-lite.mmdb").unlink()
+        alias = Path(self.temp.name) / "data-alias"
+        alias.symlink_to(self.root, target_is_directory=True)
         before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
-        with patch.object(cli, "resolve_data_root", return_value=self.root), \
+        with patch.object(cli, "resolve_data_root", return_value=alias), \
              patch("urllib.request.OpenerDirector.open", side_effect=AssertionError("network")), \
              patch.object(updater, "writer_lock", side_effect=AssertionError("write lock")), \
              patch.object(Path, "mkdir", side_effect=AssertionError("mkdir")), \
@@ -200,6 +202,7 @@ class LifecycleTests(unittest.TestCase):
         status = json.loads(output.getvalue())
         self.assertEqual(status["generation"], active.name)
         self.assertEqual(status["health"]["country"]["state"], "healthy")
+        self.assertEqual(status["health"]["country"]["path"], str(alias / "current/dbip-country-lite.mmdb"))
         self.assertEqual(status["health"]["asn"]["state"], "missing")
         for health in status["health"].values():
             self.assertTrue({"path", "resolved_path", "generation", "state"} <= health.keys())
