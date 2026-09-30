@@ -17,6 +17,7 @@ PROPERTIES = {
     'blocktype?family=inet6': 'REJECT --reject-with icmp6-port-unreachable',
 }
 ACTIONSTART = (Path(__file__).parent / 'fixtures' / 'iptables-actionstart.txt').read_text().removesuffix('\n')
+ACTIONSTART_111 = (Path(__file__).parent / 'fixtures' / 'iptables-actionstart-1.1.1.txt').read_text().removesuffix('\n')
 
 
 def save_text(source='192.0.2.1/32', target='REJECT --reject-with icmp-port-unreachable'):
@@ -75,6 +76,63 @@ class IptablesTests(unittest.TestCase):
         action = ipt.classify_iptables_action(properties)
         without_jump = save_text().replace('-A INPUT -p tcp -m multiport --dports 22,2222 -j f2b-guard\n', '')
         self.assertEqual(self.evidence(without_jump, action=action).reason, 'parent-jump-absent')
+
+    def test_stock_111_iterator_uses_single_parent_for_both_families(self):
+        """The stock chain iterator retains family-specific saves and REJECT replies."""
+        properties = {**PROPERTIES, 'chain': '<known/chain>', 'actionstart': ACTIONSTART_111}
+        action = ipt.classify_iptables_action(properties)
+        self.assertEqual(action, self.action)
+        self.assertEqual(self.evidence(save_text(), action=action).outcome, 'confirmed')
+        v6 = ipt.classify_iptables_action(properties, family='inet6')
+        self.assertEqual(v6, ipt.classify_iptables_action(PROPERTIES, family='inet6'))
+        self.assertEqual(self.evidence(save_text('2001:db8::1', 'REJECT --reject-with icmp6-port-unreachable'),
+                                       '2001:db8::1', v6).outcome, 'confirmed')
+        self.assertIsNone(ipt.classify_iptables_action(
+            {**properties, 'blocktype?family=inet6': PROPERTIES['blocktype']}, family='inet6'))
+        drop = ipt.classify_iptables_action({**properties, 'blocktype': 'DROP'})
+        self.assertEqual(self.evidence(save_text(target='DROP'), action=drop).outcome, 'confirmed')
+
+    def test_iterator_parent_is_not_hardcoded_and_stock_scopes_agree(self):
+        """The same iterator accepts a safe custom parent and stock oneport/allports."""
+        oneport = ACTIONSTART_111.replace("'INPUT'", "'PUBLIC_FILTER'").replace(
+            '-m multiport --dports http,https', '--dport ssh')
+        allports = ACTIONSTART_111.replace(' -m multiport --dports http,https', '').replace("'tcp'", "'tcp,udp'")
+        self.assertEqual(ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>',
+                                                     'actionstart': oneport}).parent_chain, 'PUBLIC_FILTER')
+        self.assertEqual(ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>',
+                                                     'actionstart': allports}).parent_chain, 'INPUT')
+
+    def test_unqualified_iterator_cannot_authorize_a_parent(self):
+        """Only one concrete source, literal $chain wiring and exact balanced loops qualify."""
+        cases = {
+            'multiple-parents': ACTIONSTART_111.replace("'INPUT'", "'INPUT,FORWARD'"),
+            'empty-parent': ACTIONSTART_111.replace("'INPUT'", "''"),
+            'unresolved-parent': ACTIONSTART_111.replace("'INPUT'", "'<known/chain>'"),
+            'dynamic-parent': ACTIONSTART_111.replace("'INPUT'", "'$parent'"),
+            'unsafe-parent': ACTIONSTART_111.replace("'INPUT'", "'INPUT;other'"),
+            'different-variable': ACTIONSTART_111.replace('$chain', '$parent'),
+            'insert-variable-mismatch': ACTIONSTART_111.replace('-I $chain', '-I $parent'),
+            'insert-concrete-parent': ACTIONSTART_111.replace('-I $chain', '-I INPUT'),
+            'check-concrete-parent': ACTIONSTART_111.replace('-C $chain', '-C INPUT'),
+            'scope-mismatch': ACTIONSTART_111.replace(
+                '-I $chain -p $proto -m multiport --dports http,https',
+                '-I $chain -p $proto -m multiport --dports ssh'),
+            'wrong-target': ACTIONSTART_111.replace('f2b-guard', 'f2b-other'),
+            'insert-target-mismatch': ACTIONSTART_111.replace('-j f2b-guard; }\ndone', '-j f2b-other; }\ndone'),
+            'missing-done': ACTIONSTART_111.replace('done; done', 'done'),
+            'extra-done': ACTIONSTART_111 + '; done',
+            'altered-closure': ACTIONSTART_111.replace('done; done', 'done done'),
+            'altered-chain-loop': ACTIONSTART_111.replace('for chain in', 'for parent in'),
+            'altered-protocol-loop': ACTIONSTART_111.replace('for proto in', 'for protocol in'),
+            'custom-chain-source': ACTIONSTART_111.replace("echo 'INPUT'", 'custom'),
+            'custom-prefix': 'arbitrary; ' + ACTIONSTART_111,
+            'custom-suffix': ACTIONSTART_111 + '; arbitrary',
+            'custom-pre-rule': ACTIONSTART_111.replace('-p $proto', '-i eth0 -p $proto'),
+            'non-return-setup': ACTIONSTART_111.replace('-j RETURN', '-j ACCEPT'),
+        }
+        for reason, raw in cases.items():
+            with self.subTest(reason=reason), self.assertRaises(Fail2BanParseError):
+                ipt.classify_iptables_action({**PROPERTIES, 'chain': '<known/chain>', 'actionstart': raw})
 
     def test_start_parent_is_not_hardcoded_and_stock_scopes_agree(self):
         """Oneport/allports and a concrete custom parent retain the same direct model."""

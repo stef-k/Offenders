@@ -1,0 +1,5 @@
+{ <iptables> -C f2b-guard -j RETURN >/dev/null 2>&1; } || { <iptables> -N f2b-guard || true; <iptables> -A f2b-guard -j RETURN; }
+for chain in $(echo 'INPUT' | sed 's/,/ /g'); do
+for proto in $(echo 'tcp' | sed 's/,/ /g'); do
+{ <iptables> -C $chain -p $proto -m multiport --dports http,https -j f2b-guard >/dev/null 2>&1; } || { <iptables> -I $chain -p $proto -m multiport --dports http,https -j f2b-guard; }
+done; done

@@ -31,7 +31,9 @@ root; validation also uses temporary local sample files.
 
 ## Quick start
 
-Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban >=1.0.2**.
+Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban 1.0.2**.
+Qualified stock Enforcement action versions: **1.0.2, 1.1.0 and 1.1.1**;
+support remains limited to recognized runtime shapes and fails closed.
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
 be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 

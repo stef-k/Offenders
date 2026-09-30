@@ -363,10 +363,14 @@ observation builder excludes `actionstart` from normal advertised-property reads
 and acquires it only when advertised and the successfully read chain is exactly
 that sentinel. Its exact value participates in both bracket fingerprints.
 
-The bounded start matcher accepts the stock RETURN-tail setup and one protocol
-loop with oneport, multiport or allports scope. The direct parent `-C` check and
-`-I` insert must agree on one concrete `CHAIN_ID`, identical scope and the exact
-already-derived `f2b-<name>` target. Missing, unresolved, unsafe, multiple-parent
+The bounded start matcher accepts exactly two stock forms: the 1.0.2/1.1.0 direct
+parent and the 1.1.1 single-parent chain iterator. Both require the stock RETURN-tail
+setup, one protocol loop, identical oneport/multiport/allports scope and the exact
+already-derived `f2b-<name>` target. Direct `-C`/`-I` parents must agree on one
+concrete `CHAIN_ID`. The iterator requires the exact stock
+`for chain in $(echo '<PARENT>' | sed 's/,/ /g')` structure, one concrete `CHAIN_ID`
+source, literal `$chain` in both rules and balanced `done; done` closure. Both
+normalize to the same descriptor parent. Missing, unresolved, unsafe, multiple-parent
 or custom syntax remains unverifiable. This raw text is never statically resolved,
 shell-evaluated or executed. It supplies expected configuration only; the existing
 save verifier independently proves the live parent jump and host rule.

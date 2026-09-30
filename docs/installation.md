@@ -7,7 +7,9 @@ title: Installation and permissions
 ## Requirements and permissions
 
 The supported baseline is **Ubuntu 24.04 LTS / Python 3.12+**, with separately
-installed **Fail2Ban >=1.0.2**. pipx installs Python dependencies automatically.
+installed **Fail2Ban 1.0.2**. Stock Enforcement action compatibility is qualified
+for **1.0.2, 1.1.0 and 1.1.1**, limited to recognized runtime shapes and failing
+closed for unsupported forms. pipx installs Python dependencies automatically.
 
 The dashboard needs Fail2Ban file logs and permission to read them. Defaults are
 `/var/log/fail2ban.log`, its `.1` rotation, and `.N.gz` rotations. Journal-only

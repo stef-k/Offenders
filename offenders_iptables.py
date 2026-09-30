@@ -83,8 +83,9 @@ def _blocking_tokens(tokens: list[str], version: int) -> bool:
 def _start_parent_chain(raw: str, ban_chain: str) -> str:
     """Match only the bounded stock start skeleton; never resolve or evaluate it.
 
-    The RETURN-tail setup and one protocol loop must wire the exact ban chain
-    through agreeing direct parent check/insert rules with identical scope.
+    The RETURN-tail setup and protocol loop must wire the exact ban chain
+    through agreeing parent check/insert rules with identical scope. The parent
+    is concrete in both rules or comes from one exact stock chain iterator.
     This supplies expected configuration, not independently observed enforcement.
     """
     text = re.sub(r'[ \t\n]+', ' ', parse_action_property(raw)).strip(' ')
@@ -93,17 +94,27 @@ def _start_parent_chain(raw: str, ban_chain: str) -> str:
     port = r'[A-Za-z0-9][A-Za-z0-9_:-]{0,63}'
     # Stock oneport, multiport and allports scope; no custom pre-rule or jump.
     scope = rf'-p \$proto(?: --dport {port}| -m multiport --dports {port}(?:,{port}){{0,14}})?'
-    pattern = (
+    setup = (
         rf'\{{ <iptables> -C {target} -j RETURN >/dev/null 2>&1; \}} \|\| '
         rf'\{{ <iptables> -N {target} \|\| true; <iptables> -A {target} -j RETURN; \}} '
-        rf"for proto in \$\(echo '{protocol}(?:,{protocol}){{0,7}}' \| sed 's/,/ /g'\); do "
-        rf'\{{ <iptables> -C (?P<parent>{CHAIN_ID.pattern}) (?P<scope>{scope}) -j {target} >/dev/null 2>&1; \}} \|\| '
-        rf'\{{ <iptables> -I (?P=parent) (?P=scope) -j {target}; \}} done'
     )
-    match = re.fullmatch(pattern, text)
-    if match is None:
-        raise Fail2BanParseError('Unsupported or ambiguous iptables start parent')
-    return match['parent']
+    protocol_loop = rf"for proto in \$\(echo '{protocol}(?:,{protocol}){{0,7}}' \| sed 's/,/ /g'\); do "
+    # Direct parents (1.0.2/1.1.0) and single-source stock iterators (1.1.1) only.
+    forms = (
+        ('', rf'(?P<parent>{CHAIN_ID.pattern})', 'done'),
+        (rf"for chain in \$\(echo '(?P<parent>{CHAIN_ID.pattern})' \| sed 's/,/ /g'\); do ",
+         r'\$chain', 'done; done'),
+    )
+    for chain_loop, parent_token, closure in forms:
+        pattern = (
+            setup + chain_loop + protocol_loop +
+            rf'\{{ <iptables> -C (?P<rule_parent>{parent_token}) (?P<scope>{scope}) -j {target} >/dev/null 2>&1; \}} \|\| '
+            rf'\{{ <iptables> -I (?P=rule_parent) (?P=scope) -j {target}; \}} {closure}'
+        )
+        match = re.fullmatch(pattern, text)
+        if match is not None:
+            return match['parent']
+    raise Fail2BanParseError('Unsupported or ambiguous iptables start parent')
 
 
 def classify_iptables_action(properties: Mapping[str, str], *, family: str = 'inet4') -> IptablesAction | None:
