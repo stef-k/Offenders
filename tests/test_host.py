@@ -125,43 +125,96 @@ class HostTests(unittest.TestCase):
 
 
 class NamespaceTests(unittest.TestCase):
-    """Fail2Ban PID and namespace identity use only systemd/proc read seams."""
+    """Only a stable PID authorizes comparison of narrowly read namespace links."""
+
+    PID_CALL = call(['systemctl', 'show', '--property=MainPID', '--value',
+                     'fail2ban.service'], timeout=8, sudo=False)
+    DAEMON_CALL = call(['/usr/bin/readlink', '/proc/123/ns/net'], timeout=8, sudo=True)
 
     def test_same_and_different_retain_bracket_identities(self):
-        """A definite comparison retains PID and both valid namespace identities."""
+        """Read self unprivileged, daemon privileged, then immediately recheck PID."""
         for daemon, state in [('net:[42]', host.NamespaceState.SAME),
                               ('net:[43]', host.NamespaceState.DIFFERENT)]:
-            with self.subTest(daemon=daemon), patch.object(host, 'run_host_command', return_value=CommandResult(0, '123\n', '')) as runner:
-                with patch.object(host.os, 'readlink', side_effect=['net:[42]', daemon]) as readlink:
+            responses = [CommandResult(0, text, '') for text in ['123\n', daemon + '\n', '123\n']]
+            with self.subTest(daemon=daemon), patch.object(host, 'run_host_command', side_effect=responses) as runner:
+                with patch.object(host.os, 'readlink', return_value='net:[42]') as readlink:
+                    runner.attach_mock(readlink, 'self_link')
                     result = host.get_fail2ban_namespace()
             self.assertEqual(result, host.NetworkNamespaceIdentity(state, 123, 'net:[42]', daemon))
-            runner.assert_called_once_with(['systemctl', 'show', '--property=MainPID', '--value', 'fail2ban.service'], timeout=8, sudo=False)
-            self.assertEqual(readlink.call_args_list, [call('/proc/self/ns/net'), call('/proc/123/ns/net')])
+            self.assertEqual(runner.mock_calls, [self.PID_CALL, call.self_link('/proc/self/ns/net'),
+                                                self.DAEMON_CALL, self.PID_CALL])
 
     def test_command_or_pid_unavailable_never_reads_proc(self):
         """Failed systemd and malformed/non-running PIDs cannot become mismatch."""
         failed = CommandResult(1, '123\n', 'denied', CommandFailure.NONZERO_EXIT)
         results = [failed, *[CommandResult(0, text, '') for text in
-                            ['', '0\n', '-1', 'MainPID=123', '1\n2\n', '123\n\n', '9' * 40]]]
+                            ['', '0\n', '-1', '0123', 'MainPID=123', '1\n2\n', '123\n\n',
+                             '2147483648', '9' * 11, '123/../1', '123;id']]]
         for response in results:
-            with self.subTest(response=response), patch.object(host, 'run_host_command', return_value=response):
+            with self.subTest(response=response), patch.object(host, 'run_host_command', return_value=response) as runner:
                 with patch.object(host.os, 'readlink') as readlink:
                     result = host.get_fail2ban_namespace()
             self.assertEqual(result.state, host.NamespaceState.UNAVAILABLE)
             self.assertIsNone(result.main_pid)
+            self.assertEqual(runner.call_args_list, [self.PID_CALL])
             readlink.assert_not_called()
 
-    def test_disappeared_inaccessible_or_malformed_namespace(self):
-        """Read failures retain available identities and never report different."""
-        for reads, current in [([FileNotFoundError('gone')], None),
-                               (['net:[42]', FileNotFoundError('gone')], 'net:[42]'),
-                               (['net:[42]', PermissionError('denied')], 'net:[42]'),
-                               (['net:[42]', 'not-a-namespace'], 'net:[42]'),
-                               (['net:[0]'], None), (['net:[42]\n'], None)]:
-            with self.subTest(reads=reads), patch.object(host, 'run_host_command', return_value=CommandResult(0, '123', '')):
-                with patch.object(host.os, 'readlink', side_effect=reads):
+    def test_self_namespace_unavailable_prevents_privileged_read(self):
+        """Self read failure or malformed identity never authorizes daemon reads."""
+        for identity in [FileNotFoundError('gone'), PermissionError('denied'),
+                         'not-a-namespace', 'net:[0]', 'net:[42]\n']:
+            with self.subTest(identity=identity), patch.object(host, 'run_host_command', return_value=CommandResult(0, '123', '')) as runner:
+                with patch.object(host.os, 'readlink', side_effect=[identity]) as readlink:
                     result = host.get_fail2ban_namespace()
-            self.assertEqual(result.state, host.NamespaceState.UNAVAILABLE)
-            self.assertEqual(result.main_pid, 123)
-            self.assertEqual(result.current_namespace, current)
-            self.assertIsNone(result.fail2ban_namespace)
+            self.assertEqual(result, host.NetworkNamespaceIdentity(host.NamespaceState.UNAVAILABLE, 123))
+            self.assertEqual(runner.call_args_list, [self.PID_CALL])
+            readlink.assert_called_once_with('/proc/self/ns/net')
+
+    def test_privileged_daemon_failure_or_invalid_output_is_unavailable(self):
+        """Denied, disappeared, timed out or malformed daemon evidence is discarded."""
+        failed = [CommandResult(1, 'net:[42]\n', 'denied', CommandFailure.NONZERO_EXIT),
+                  CommandResult(1, '', 'gone', CommandFailure.NONZERO_EXIT),
+                  CommandResult(None, 'net:[42]\n', '', CommandFailure.TIMEOUT)]
+        invalid = [CommandResult(0, text, '') for text in
+                   ['', 'not-a-namespace', 'net:[0]', 'net:[42]\n\n', 'net:[42]\nnet:[43]',
+                    ' net:[42]', 'net:[123456789012345678901]']]
+        for response in failed + invalid:
+            responses = [CommandResult(0, '123', ''), response, CommandResult(0, '123', '')]
+            with self.subTest(response=response), patch.object(host, 'run_host_command', side_effect=responses) as runner:
+                with patch.object(host.os, 'readlink', return_value='net:[42]') as readlink:
+                    result = host.get_fail2ban_namespace()
+            self.assertEqual(result, host.NetworkNamespaceIdentity(host.NamespaceState.UNAVAILABLE, 123, 'net:[42]'))
+            self.assertEqual(runner.call_args_list, [self.PID_CALL, self.DAEMON_CALL, self.PID_CALL])
+            readlink.assert_called_once_with('/proc/self/ns/net')
+
+    def test_changed_or_unreadable_second_pid_discards_daemon_identity(self):
+        """Neither matching nor differing identities survive an unstable PID read."""
+        closing = [CommandResult(1, '123\n', 'denied', CommandFailure.NONZERO_EXIT),
+                   *[CommandResult(0, text, '') for text in
+                     ['124\n', '0\n', '', 'MainPID=123', '123\n\n', '2147483648']]]
+        for daemon in ['net:[42]\n', 'net:[43]\n']:
+            for response in closing:
+                responses = [CommandResult(0, '123\n', ''), CommandResult(0, daemon, ''), response]
+                with self.subTest(daemon=daemon, response=response), patch.object(host, 'run_host_command', side_effect=responses) as runner:
+                    with patch.object(host.os, 'readlink', return_value='net:[42]'):
+                        result = host.get_fail2ban_namespace()
+                self.assertEqual(result, host.NetworkNamespaceIdentity(host.NamespaceState.UNAVAILABLE, 123, 'net:[42]'))
+                self.assertEqual(runner.call_args_list, [self.PID_CALL, self.DAEMON_CALL, self.PID_CALL])
+
+    def test_exact_privileged_process_argv(self):
+        """The real runner adds only sudo -n to one validated daemon namespace path."""
+        from subprocess import CompletedProcess, DEVNULL
+        responses = [CompletedProcess([], 0, text, '') for text in
+                     ['123\n', 'net:[42]\n', '123\n']]
+        with patch('offenders_fail2ban.subprocess.run', side_effect=responses) as process:
+            with patch.object(host.os, 'readlink', return_value='net:[42]') as readlink:
+                result = host.get_fail2ban_namespace()
+        self.assertEqual(result.state, host.NamespaceState.SAME)
+        pid_argv = self.PID_CALL.args[0]
+        options = dict(stdin=DEVNULL, capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', timeout=8, check=False)
+        self.assertEqual(process.call_args_list, [
+            call(pid_argv, **options),
+            call(['sudo', '-n', '/usr/bin/readlink', '/proc/123/ns/net'], **options),
+            call(pid_argv, **options)])
+        readlink.assert_called_once_with('/proc/self/ns/net')

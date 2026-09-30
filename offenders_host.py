@@ -44,28 +44,37 @@ class NetworkNamespaceIdentity:
     fail2ban_namespace: str | None = None
 
 
-def get_fail2ban_namespace() -> NetworkNamespaceIdentity:
-    """Compare current and running Fail2Ban namespaces using only systemd/proc reads."""
+def _fail2ban_main_pid() -> int | None:
+    """Read one validated running-daemon PID without privilege or fallback."""
     result = run_host_command(
         ["systemctl", "show", "--property=MainPID", "--value", "fail2ban.service"],
         timeout=8, sudo=False)
     value = result.stdout.removesuffix("\n")
     if result.failure or not re.fullmatch(r"[1-9][0-9]{0,9}", value) or int(value) > 2147483647:
+        return None
+    return int(value)
+
+
+def get_fail2ban_namespace() -> NetworkNamespaceIdentity:
+    """Compare namespace links only after bracketing the privileged read by PID."""
+    pid = _fail2ban_main_pid()
+    if pid is None:
         return NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)
-    pid = int(value)
-    identities = []
-    for path in ("/proc/self/ns/net", f"/proc/{pid}/ns/net"):
-        try:
-            identity = os.readlink(path)
-        except OSError:
-            break
-        if not re.fullmatch(r"net:\[[1-9][0-9]{0,19}\]", identity):
-            break
-        identities.append(identity)
-    if len(identities) != 2:
-        return NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE, pid,
-                                        identities[0] if identities else None)
-    current, daemon = identities
+    unavailable = NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE, pid)
+    try:
+        current = os.readlink("/proc/self/ns/net")
+    except OSError:
+        return unavailable
+    if not re.fullmatch(r"net:\[[1-9][0-9]{0,19}\]", current):
+        return unavailable
+    unavailable = replace(unavailable, current_namespace=current)
+    result = run_host_command(["/usr/bin/readlink", f"/proc/{pid}/ns/net"],
+                              timeout=8, sudo=True)
+    # Recheck immediately: a readable link alone does not prove daemon ownership.
+    closing_pid = _fail2ban_main_pid()
+    daemon = result.stdout.removesuffix("\n")
+    if closing_pid != pid or result.failure or not re.fullmatch(r"net:\[[1-9][0-9]{0,19}\]", daemon):
+        return unavailable
     state = NamespaceState.SAME if current == daemon else NamespaceState.DIFFERENT
     return NetworkNamespaceIdentity(state, pid, current, daemon)
 

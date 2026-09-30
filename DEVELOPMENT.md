@@ -307,10 +307,14 @@ IPv6 overrides; diagnostic or transient fields are rejected. It detects changes,
 without classifying actions or acquiring firewall state.
 
 `offenders_host.get_fail2ban_namespace` reads MainPID through non-sudo
-`systemctl show --property=MainPID --value fail2ban.service`, then reads the
-`/proc/self/ns/net` and `/proc/<pid>/ns/net` symlink identities. Its frozen result
-retains PID and available identities with `same`, `different` or `unavailable`.
-Command/PID/proc failures produce `unavailable`; no namespace is entered or changed.
+`systemctl show --property=MainPID --value fail2ban.service`, then reads
+`/proc/self/ns/net` directly and the validated `/proc/<pid>/ns/net` through the
+bounded `sudo -n /usr/bin/readlink` seam. It immediately re-reads MainPID non-sudo;
+only the same nonzero PID permits comparison of the exact `net:[N]` identities.
+Its frozen result retains PID and available identities with `same`, `different`
+or `unavailable`. Command/PID/proc failures and an unstable PID produce
+`unavailable` without retaining the privileged identity. The opening/closing
+Enforcement bracket remains the outer race check; no namespace is entered or changed.
 These seams have no dashboard/report caller and perform no verification bracket
 or UI orchestration. Fixture provenance and upstream limits are recorded in
 [tests/fixtures/README.md](tests/fixtures/README.md).

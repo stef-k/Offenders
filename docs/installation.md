@@ -70,13 +70,14 @@ The nft table grammar is independently bounded. Save commands use `""` to
 require **no arguments**; omitting it would permit arbitrary arguments.
 
 ```sudoers
-# Fresh status and the finite runtime-action read surface.
+# Fresh status, finite runtime-action reads and the validated daemon namespace link.
 Cmnd_Alias OFFENDERS_ENFORCEMENT = \
     /usr/bin/fail2ban-client status, \
     /usr/bin/fail2ban-client ^status [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
     /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actions$, \
     /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actionproperties [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
     /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} action [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} (actionban|actionstart|name|nftables|table_family|table|chain|chain_type|chain_hook|addr_set(\?family=inet6)?|blocktype(\?family=inet6)?|iptables(\?family=inet6)?|lockingopt|add|destination|application|comment|kill-mode|kill)$, \
+    /usr/bin/readlink ^/proc/[1-9][0-9]{0,9}/ns/net$, \
     /usr/sbin/nft ^--json --numeric list table (inet|ip|ip6) [A-Za-z0-9_][A-Za-z0-9_.:+-]{0,127}$, \
     /usr/sbin/iptables-save "", /usr/sbin/ip6tables-save "", \
     /usr/sbin/iptables-nft-save "", /usr/sbin/ip6tables-nft-save "", \
@@ -99,11 +100,14 @@ bare save binary; UFW uses only `ufw status`, `ufw show added` and bare
 The additional `actionstart` read is used only when advertised and runtime
 `chain` is exactly `<known/chain>`, to identify one stock-compatible iptables
 parent chain. Its text is never executed; `known/chain` is never queried.
-Namespace proof uses non-sudo
-`systemctl show --property=MainPID --value fail2ban.service` plus current-user
-reads of `/proc/self/ns/net` and `/proc/<MainPID>/ns/net`. A mismatch or unreadable
-identity prevents all firewall reads; do not grant sudo systemctl/proc access or
-add namespace switching to work around it.
+Namespace proof reads MainPID through non-sudo
+`systemctl show --property=MainPID --value fail2ban.service`, then reads
+`/proc/self/ns/net` as the current user and only the validated numeric daemon link
+through `sudo -n /usr/bin/readlink /proc/<MainPID>/ns/net`. It immediately re-reads
+MainPID non-sudo and requires the same nonzero PID before comparing identities.
+A changed/unreadable PID, unreadable identity or namespace mismatch prevents all
+firewall reads. Keep the readlink allowance anchored to this one numeric path:
+no options, arbitrary procfs reads, sudo systemctl or namespace switching.
 
 ## Install and upgrade
 
