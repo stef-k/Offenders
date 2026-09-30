@@ -100,12 +100,13 @@ contexts rather than promising every app binding on every modal.
 | Dashboard | `f` | Focus filter; Enter keeps query and returns to table; Esc clears and returns |
 | Dashboard | `v` | Cycle IP / ASN / Country summary |
 | Dashboard | `a` | Open one Coverage analysis snapshot |
+| Coverage | `p` | Switch the independent Coverage window 7d / 24h when idle (default 7d) |
 | Dashboard | `n` | Open one manual Enforcement check |
 | Enforcement | `r` | Recheck when idle; clear previous evidence before acquisition |
 | Enforcement | Esc / `q` | Close and reject late results |
 | Dashboard | `g` | Open GeoIP diagnostics |
-| Dashboard tables; jail/IP detail tables | `c` / `x` | Copy focused row (tab-separated) or cell, according to cursor mode |
-| Dashboard tables; jail/IP detail tables | `t` | Toggle focused table row/cell cursor mode |
+| Dashboard tables; jail/IP detail tables; Coverage table | `c` / `x` | Copy focused row (tab-separated) or cell, according to cursor mode |
+| Dashboard tables; jail/IP detail tables; Coverage table | `t` | Toggle focused table row/cell cursor mode |
 | Dashboard real Top IP or Last bans row | Enter | Open IP inspector |
 | Dashboard Active bans per jail row | Enter | Open jail detail |
 | Dashboard real Top IP or Last bans row; IP inspector | `w` / `d` | Explicit Registration / RDNS for the selected/fixed IP |
@@ -117,7 +118,7 @@ contexts rather than promising every app binding on every modal.
 | Jail detail; IP inspector | Esc / `q` | Back one screen |
 | Command output | `c` | Copy rendered output |
 | Command output | Esc / `q` | Close |
-| Coverage finding | `v` | Open existing-filter validation or custom-candidate screen |
+| Coverage candidate decision | `v` | Open existing-filter validation or custom-candidate screen; unavailable for suppressed rows |
 | Existing-filter validation | `v` / Enter on target | Explicitly validate selected target |
 | Custom candidate | `v` | Explicitly generate and validate a fixed template |
 | Custom candidate | `c` | Copy only an exposed reviewable result |

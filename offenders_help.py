@@ -59,8 +59,12 @@ CONTEXTS = {
         "GeoIP is optional local Country/ASN enrichment using app-managed generations. "
         "Updates validate before activation; automatic updates are opt-in."),
     RecommendationsScreen: HelpContext(
-        "Coverage / Recommendations", ("validate", "close"),
-        "Coverage is explicit evidence/review assistance; validate inspects the selected actionable finding. "
+        "Coverage / Recommendations", ("coverage_period", "validate", "app.copy_selection", "app.toggle_cursor", "close"),
+        "Coverage is manual and independent of the dashboard period. It opens with a 7d window; "
+        "p switches 7d/24h when idle. Bounded file tails and one plain rotation can provide only "
+        "partial history; compressed/deeper rotations are not read. The decision table includes "
+        "candidates and suppressed/insufficient rows, which explain evidence and are not recommendations. "
+        "Validate is available only for a selected candidate. "
         "Findings do not prove maliciousness, reachability or filter suitability."),
     ValidationScreen: HelpContext(
         "Existing-filter validation", ("validate", "enter", "close"),

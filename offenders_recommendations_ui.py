@@ -1,17 +1,18 @@
 """Manual coverage presentation; acquisition stays off-loop and offenders_findings owns policy."""
 from collections import Counter
-from datetime import timezone
+from datetime import timedelta, timezone
 
 from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
-from textual.screen import Screen
-from textual.worker import get_current_worker
+from textual.screen import ModalScreen
+from textual.worker import Worker, get_current_worker
 from textual.widgets import DataTable, Static
 
 from offenders_selection import current_row_key, event_row_key
 from offenders_activity import OffendersFooter
+from offenders_help_content import HELP_BINDING
 from offenders_validation_ui import ValidationScreen
 from offenders_candidate_ui import CustomCandidateScreen
 from offenders_host import discover_host_inventory
@@ -19,7 +20,11 @@ from offenders_sources import discover_log_sources
 from offenders_coverage import discover_coverage
 from offenders_evidence import EvidenceCollector
 from offenders_patterns import analyze_patterns
-from offenders_findings import FindingDecision, FindingInventory, build_findings
+from offenders_findings import CANDIDATES, FindingDecision, FindingInventory, build_findings
+
+# Coverage requests raw evidence independently of the dashboard's ban history.
+COVERAGE_PERIODS = {"7d": timedelta(days=7), "24h": timedelta(hours=24)}
+DEFAULT_COVERAGE_PERIOD = "7d"
 
 # Presentation labels describe existing decisions without re-evaluating policy.
 REVIEW_LABELS = {
@@ -48,12 +53,12 @@ CAVEATS = {
 }
 
 
-def run_analysis() -> FindingInventory:
+def run_analysis(lookback: timedelta) -> FindingInventory:
     """Acquire one source snapshot and return the existing policy inventory unchanged."""
     host = discover_host_inventory()
     sources = discover_log_sources(host)
     coverage = discover_coverage(sources)
-    evidence = EvidenceCollector().collect(sources)
+    evidence = EvidenceCollector().collect(sources, lookback=lookback)
     patterns = analyze_patterns(evidence)
     return build_findings(patterns, coverage)
 
@@ -72,7 +77,10 @@ def format_time(value, basis: str) -> str:
 def finding_detail(decision: FindingDecision) -> str:
     """Render only the selected object's bounded facts and literal retained examples."""
     group = decision.group
-    lines = [REVIEW_LABELS[decision.classification], decision.reason, CAVEATS[decision.classification],
+    candidate = decision.classification in CANDIDATES
+    label = REVIEW_LABELS[decision.classification] if candidate else SUPPRESSION_LABELS[decision.classification]
+    caveat = CAVEATS[decision.classification] if candidate else "Suppressed / not a recommendation"
+    lines = [label, decision.reason, caveat,
              "", f"Service family: {group.family}", f"Service states: {', '.join(decision.service_states)}",
              f"Source kind: {group.source_kind}", f"Canonical source: {group.source_identity}",
              "", f"Pattern: {group.pattern_kind}", f"Signature: {group.signature}",
@@ -128,21 +136,28 @@ def bounded_error(error: Exception) -> str:
     return " ".join(printable.split())[:240]
 
 
-class RecommendationsScreen(Screen):
+class RecommendationsScreen(ModalScreen):
     """Own one manual worker and its immutable result until this screen closes."""
 
-    BINDINGS = [("v", "validate", "Validate"), ("escape", "close", "Close"), ("q", "close", "Close")]
+    BINDINGS = [HELP_BINDING, ("p", "coverage_period", "Coverage Period"),
+                ("v", "validate", "Validate"), ("c", "app.copy_selection", "Copy"),
+                ("x", "app.copy_selection", "Copy"), ("t", "app.toggle_cursor", "Row/Cell"),
+                ("escape", "close", "Close"), ("q", "close", "Close")]
     DEFAULT_CSS = """
-    RecommendationsScreen { layout: vertical; }
+    RecommendationsScreen { background: $surface; layout: vertical; }
     #coverage-summary { height: auto; max-height: 12; }
     #coverage-findings { height: 1fr; min-height: 5; }
     #coverage-scroll { height: 2fr; }
     """
 
     def __init__(self):
+        """Keep the committed window and worker ownership local to this opening."""
         super().__init__()
+        self.coverage_period = DEFAULT_COVERAGE_PERIOD
         self.inventory: FindingInventory | None = None
         self.decisions: dict[str, FindingDecision] = {}
+        self._analysis_worker: Worker | None = None
+        self._generation = 0
         self._delivery_closed = False
 
     def compose(self) -> ComposeResult:
@@ -154,44 +169,75 @@ class RecommendationsScreen(Screen):
         yield OffendersFooter()
 
     def on_mount(self) -> None:
-        """Opening is the only trigger; no rerun action or timer is installed."""
+        """Opening requests the default horizon; no analysis timer is installed."""
         table = self.query_one(DataTable)
-        table.add_columns("Review type", "Service", "Pattern", "Events", "Global IPs", "Source")
+        table.add_columns("Disposition", "Service", "Pattern", "Events", "Global IPs", "Source")
         table.focus()
-        self._analyze()
+        self._start_analysis(DEFAULT_COVERAGE_PERIOD)
+
+    def action_coverage_period(self) -> None:
+        """Request only the next Coverage horizon, without changing committed state."""
+        periods = tuple(COVERAGE_PERIODS)
+        target = periods[(periods.index(self.coverage_period) + 1) % len(periods)]
+        self._start_analysis(target)
+
+    def _start_analysis(self, period: str) -> None:
+        """Exclude overlapping workers and remove old evidence before acquisition."""
+        if self._delivery_closed:
+            return
+        if self._analysis_worker is not None and not self._analysis_worker.is_finished:
+            self.app.notify("Analysis already in progress", timeout=2.0)
+            return
+        self._generation += 1
+        self.inventory = None
+        self.decisions.clear()
+        self.query_one(DataTable).clear()
+        self.query_one("#coverage-detail", Static).update("")
+        self.query_one("#coverage-summary", Static).update(
+            f"Coverage / Recommendations\nRequested Coverage window: {period} "
+            "(independent of dashboard period)\nAnalyzing coverage…")
+        self.refresh_bindings()
+        self._analysis_worker = self._analyze(period)
 
     @work(thread=True, name="activity:Analyzing coverage…")
-    def _analyze(self) -> None:
+    def _analyze(self, period: str) -> None:
         """Run all acquisition off-loop and discard cancelled delivery."""
         worker = get_current_worker()
         app = self.app
         try:
-            inventory, error = run_analysis(), None
+            inventory, error = run_analysis(COVERAGE_PERIODS[period]), None
         except Exception as exc:
             inventory, error = None, bounded_error(exc)
         if not worker.is_cancelled:
-            app.call_from_thread(self._complete, inventory, error, worker)
+            app.call_from_thread(self._complete, inventory, error, period, worker)
 
-    def _complete(self, inventory: FindingInventory | None, error: str | None, worker=None) -> None:
+    def _complete(self, inventory: FindingInventory | None, error: str | None,
+                  period: str, worker=None) -> None:
         """A closed/unmounted view cannot publish into a later screen."""
-        if self._delivery_closed or not self.is_mounted or (worker is not None and worker.is_cancelled):
+        if self._delivery_closed or not self.is_mounted or (worker is not None and (
+                worker is not self._analysis_worker or worker.is_cancelled)):
             return
         summary = self.query_one("#coverage-summary", Static)
         if error is not None:
-            summary.update(Text(f"Coverage / Recommendations\nAnalysis unavailable\n{error}"))
+            summary.update(Text(f"Coverage / Recommendations\nRequested Coverage window: {period} "
+                                f"(independent of dashboard period)\nAnalysis unavailable\n{error}"))
             return
+        self.coverage_period = period
         self.inventory = inventory
-        summary.update(Text("Coverage / Recommendations\n" + analysis_summary(inventory)))
+        summary.update(Text(f"Coverage / Recommendations\nCoverage window: {period} "
+                            "(independent of dashboard period)\n" + analysis_summary(inventory)))
         table = self.query_one(DataTable)
-        for index, decision in enumerate(inventory.findings):
-            key = str(index)
+        for index, decision in enumerate(inventory.decisions):
+            key = f"{self._generation}:{index}"
             self.decisions[key] = decision
             group = decision.group
             table.add_row(*(Text(str(cell)) for cell in (
-                REVIEW_LABELS[decision.classification], group.family, group.signature,
+                (REVIEW_LABELS | SUPPRESSION_LABELS)[decision.classification], group.family, group.signature,
                 group.event_count, group.global_source_ip_count, group.source_identity)), key=key)
-        if inventory.findings:
-            self._show_detail("0")
+        key = current_row_key(table)
+        if key is not None:
+            self._show_detail(key.value)
+        self.refresh_bindings()
 
     @on(DataTable.RowHighlighted, "#coverage-findings")
     def highlight_finding(self, event: DataTable.RowHighlighted) -> None:
@@ -199,6 +245,7 @@ class RecommendationsScreen(Screen):
         key = event_row_key(event)
         if key is not None and not self._delivery_closed:
             self._show_detail(key.value)
+        self.refresh_bindings()
 
     def _show_detail(self, key: str) -> None:
         """Replace the selected detail without caching other rendered evidence."""
@@ -206,12 +253,23 @@ class RecommendationsScreen(Screen):
             self.query_one("#coverage-detail", Static).update(Text(finding_detail(self.decisions[key])))
             self.query_one("#coverage-scroll", VerticalScroll).scroll_home(animate=False)
 
-    def action_validate(self) -> None:
-        """Open explicit validation using this screen's exact retained finding."""
+    def _selected_candidate(self) -> FindingDecision | None:
+        """Accept only a current row whose existing policy class allows validation."""
         if self._delivery_closed or self.inventory is None:
-            return
+            return None
         key = current_row_key(self.query_one(DataTable))
         decision = self.decisions.get(key.value) if key is not None else None
+        return decision if decision is not None and decision.classification in CANDIDATES else None
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Hide Validate for empty, stale and suppressed selections."""
+        if action == "validate":
+            return self._selected_candidate() is not None
+        return super().check_action(action, parameters)
+
+    def action_validate(self) -> None:
+        """Open candidate-only validation using the exact retained decision."""
+        decision = self._selected_candidate()
         if decision is None:
             return
         screen = CustomCandidateScreen if decision.classification == "custom_gap_candidate" else ValidationScreen
@@ -226,3 +284,4 @@ class RecommendationsScreen(Screen):
     def on_unmount(self) -> None:
         """Also guard removal paths other than the local close bindings."""
         self._delivery_closed = True
+        self.workers.cancel_node(self)

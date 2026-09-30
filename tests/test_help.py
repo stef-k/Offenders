@@ -107,7 +107,7 @@ class HelpNavigationTests(unittest.IsolatedAsyncioTestCase):
                     (CommandOutputModal("8.8.8.8", "rdns"), "RDNS (PTR)",
                      ("copy_output", "dismiss"), "Neither Registration nor PTR data"),
                     (RecommendationsScreen(), "Coverage / Recommendations",
-                     ("validate", "close"), "do not prove"),
+                     ("coverage_period", "validate", "app.copy_selection", "app.toggle_cursor", "close"), "do not prove"),
                     (ValidationScreen(inv, inv.findings[0]), "Existing-filter validation",
                      ("validate", "enter", "close"), "does not enable/reload/change"),
                     (CustomCandidateScreen(custom, custom.findings[0]), "Custom candidate",

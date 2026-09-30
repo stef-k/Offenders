@@ -72,7 +72,9 @@ Registration and RDNS
 Results are bounded factual lookup output, not reputation scoring.
 
 Coverage and validation
-Coverage is manually initiated and conservatively correlates retained evidence for review. Existing-filter validation tests selected filters against retained samples; custom candidates use fixed templates and validation, remain disabled and copy-only, and are never installed or enabled automatically.
+Coverage is manual and independent of the dashboard period: it opens with a 7d window, and local p switches 7d/24h when idle. Requested history can be partial: file evidence uses bounded tails and one plain rotation; compressed/deeper rotations are not read.
+The analysis decision table includes candidates and suppressed/insufficient decisions. Suppressed rows explain the existing decision and are not recommendations; v Validate is available only for a selected candidate.
+Existing-filter validation tests selected filters against retained samples; custom candidates use fixed templates and validation, remain disabled and copy-only, and are never installed or enabled automatically.
 Findings do not prove maliciousness, safety or reachability; sample matches do not establish operational suitability.
 
 Enforcement

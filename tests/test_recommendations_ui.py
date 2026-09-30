@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import ExitStack
 from dataclasses import replace
+from datetime import timedelta
 import threading
 import unittest
 from unittest.mock import patch
@@ -33,15 +34,32 @@ class PresentationTests(unittest.TestCase):
         calls = []
         with ExitStack() as stack:
             for name, arguments, result in steps:
-                def invoke(*args, name=name, arguments=arguments, result=result):
+                def invoke(*args, name=name, arguments=arguments, result=result, **kwargs):
                     self.assertEqual(len(args), len(arguments))
                     for actual, wanted in zip(args, arguments):
                         self.assertIs(actual, wanted)
+                    self.assertEqual(kwargs, {'lookback': lookback} if name == 'EvidenceCollector.collect' else {})
                     calls.append(name)
                     return result
                 stack.enter_context(patch(f'offenders_recommendations_ui.{name}', side_effect=invoke))
-            self.assertIs(ui.run_analysis(), expected)
-        self.assertEqual(calls, [step[0] for step in steps])
+            for lookback in (timedelta(days=7), timedelta(hours=24)):
+                self.assertIs(ui.run_analysis(lookback), expected)
+        self.assertEqual(calls, [step[0] for step in steps] * 2)
+
+    def test_suppressed_detail_preserves_reason_and_evidence(self):
+        """Below-threshold and unavailable decisions explain facts without recommending."""
+        for options in ({'count': 1}, {'analysis': 'unavailable'}):
+            decision = build_findings(*fixture(**options)).decisions[0]
+            text = ui.finding_detail(decision)
+            for value in ('Suppressed / not a recommendation',
+                          ui.SUPPRESSION_LABELS[decision.classification], decision.reason,
+                          'Service family: ssh', 'listening_non_loopback', 'Source kind: file',
+                          'Canonical source: /real', 'ssh_failed_password',
+                          f'Recognized records: {decision.group.event_count}',
+                          'Distinct source IPs: 1', 'Global source IPs: 1', 'Non-global source IPs: 0',
+                          '2026-01-01T00:00:00Z', 'Timestamp basis: utc',
+                          'no_obvious_match', *decision.group.examples, *decision.limitations):
+                self.assertIn(value, text)
 
     def test_candidate_details_and_time_domains(self):
         cases = [({'disabled': (('spare', 'sshd'),)}, 'Filter suitability is not yet established'),
@@ -97,10 +115,10 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         entered, release, finished = threading.Event(), threading.Event(), threading.Event()
         result = build_findings(*fixture())
         second = replace(result.findings[0], classification='existing_disabled_candidate')
-        result = replace(result, findings=(*result.findings, second))
+        result = replace(result, findings=(*result.findings, second), decisions=(*result.decisions, second))
         ui_thread = threading.get_ident()
 
-        def pending():
+        def pending(lookback):
             self.assertNotEqual(threading.get_ident(), ui_thread)
             entered.set()
             try:
@@ -124,6 +142,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
                     run.assert_not_called()
                     await pilot.press('a')
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
+                    run.assert_called_once_with(timedelta(days=7))
                     old = app.screen
                     self.assertIn("Analyzing coverage…", app.workers.activity_text)
                     self.assertIn('Analyzing coverage', str(old.query_one('#coverage-summary', Static).content))
@@ -143,8 +162,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIs(current.inventory, result)
                     table = current.query_one(DataTable)
                     self.assertEqual(table.row_count, 2)
-                    self.assertIs(current.decisions['0'], result.findings[0])
-                    self.assertIs(current.decisions['1'], second)
+                    self.assertEqual(list(current.decisions.values()), list(result.decisions))
                     await pilot.press('down')
                     self.assertIn(ui.REVIEW_LABELS[second.classification], str(current.query_one('#coverage-detail', Static).content))
                     await pilot.press('q')
@@ -161,3 +179,154 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press('q')
                 finally:
                     release.set()
+
+    async def test_period_changes_are_transactional_and_single_flight(self):
+        """Each explicit window owns its request; failure cannot relabel old evidence."""
+        entered, release = threading.Event(), threading.Event()
+        result = build_findings(*fixture())
+
+        def analyze(lookback):
+            if lookback == timedelta(hours=24):
+                entered.set()
+                if not release.wait(10):
+                    raise AssertionError('worker not released')
+            evidence = result.pattern_inventory.evidence_snapshot
+            return replace(result, pattern_inventory=replace(result.pattern_inventory,
+                evidence_snapshot=replace(evidence, lookback=lookback,
+                                          requested_since=evidence.collected_at - lookback)))
+
+        with patch('offenders.build_report', side_effect=lambda *, period: replace(report(), period=period)) as build, \
+             patch('offenders_geoip_ui.read_state', return_value={}), \
+             patch.object(ui, 'run_analysis', side_effect=analyze) as run:
+            app = OffendersApp()
+            async with app.run_test(size=(120, 50)) as pilot:
+                try:
+                    await app.workers.wait_for_complete()
+                    await pilot.press('p')
+                    await app.workers.wait_for_complete()
+                    dashboard_period = app._active_period
+                    self.assertNotEqual(dashboard_period, '7d')
+                    await pilot.press('a')
+                    await app.workers.wait_for_complete()
+                    screen = app.screen
+                    table = screen.query_one(DataTable)
+                    self.assertEqual(screen.coverage_period, '7d')
+                    self.assertIn('Coverage window: 7d (independent of dashboard period)',
+                                  str(screen.query_one('#coverage-summary', Static).content))
+                    build.reset_mock()
+                    await pilot.press('p')
+                    self.assertTrue(await asyncio.to_thread(entered.wait, 3))
+                    self.assertEqual(screen.coverage_period, '7d')
+                    self.assertIsNone(screen.inventory)
+                    self.assertEqual(table.row_count, 0)
+                    self.assertEqual(str(screen.query_one('#coverage-detail', Static).content), '')
+                    self.assertNotIn('v', screen.active_bindings)
+                    with patch.object(app, 'notify') as notify:
+                        await pilot.press('p')
+                        notify.assert_called_once()
+                    self.assertEqual(run.call_count, 2)
+                    release.set()
+                    await app.workers.wait_for_complete()
+                    self.assertEqual(screen.coverage_period, '24h')
+                    self.assertEqual(screen.inventory.pattern_inventory.evidence_snapshot.lookback, timedelta(hours=24))
+                    self.assertEqual(table.row_count, 1)
+                    await pilot.press('p')
+                    await app.workers.wait_for_complete()
+                    self.assertEqual(screen.coverage_period, '7d')
+                    self.assertEqual(run.call_args_list[0].args, (timedelta(days=7),))
+                    self.assertEqual([call.args[0] for call in run.call_args_list],
+                                     [timedelta(days=7), timedelta(hours=24), timedelta(days=7)])
+                    run.side_effect = RuntimeError('requested run failed')
+                    await pilot.press('p')
+                    await app.workers.wait_for_complete()
+                    self.assertEqual(screen.coverage_period, '7d')
+                    self.assertIsNone(screen.inventory)
+                    self.assertEqual(table.row_count, 0)
+                    self.assertFalse(screen.decisions)
+                    self.assertEqual(str(screen.query_one('#coverage-detail', Static).content), '')
+                    text = str(screen.query_one('#coverage-summary', Static).content)
+                    self.assertIn('Analysis unavailable', text)
+                    self.assertIn('Requested Coverage window: 24h', text)
+                    self.assertNotIn('Requested window:', text)
+                    self.assertEqual(app._active_period, dashboard_period)
+                    build.assert_not_called()
+                finally:
+                    release.set()
+
+    async def test_decision_rows_validation_and_local_controls(self):
+        """All decisions are inspectable; only candidates route to validation."""
+        patterns, coverage = fixture()
+        group = patterns.groups[0]
+        mixed = build_findings(replace(patterns, groups=(replace(group, signature='z'),
+            replace(group, signature='a', event_count=1), replace(group, family='dovecot', signature='b'))), coverage)
+        suppressed = build_findings(*fixture(count=1))
+        empty = replace(suppressed, decisions=(), pattern_inventory=replace(
+            suppressed.pattern_inventory, groups=()))
+        with patch('offenders.build_report', return_value=report()) as build, \
+             patch('offenders_geoip_ui.read_state', return_value={}), \
+             patch.object(ui, 'run_analysis', return_value=mixed) as run:
+            app = OffendersApp()
+            async with app.run_test(size=(120, 50)) as pilot:
+                await app.workers.wait_for_complete()
+                await pilot.press('a')
+                await app.workers.wait_for_complete()
+                screen = app.screen
+                table = screen.query_one(DataTable)
+                self.assertEqual(table.row_count, len(mixed.decisions))
+                for actual, expected in zip(screen.decisions.values(), mixed.decisions):
+                    self.assertIs(actual, expected)
+                self.assertEqual(str(table.columns[next(iter(table.columns))].label), 'Disposition')
+                for index, decision in enumerate(mixed.decisions):
+                    table.move_cursor(row=index)
+                    await pilot.pause()
+                    self.assertIn(decision.reason, str(screen.query_one('#coverage-detail', Static).content))
+                    candidate = decision in mixed.findings
+                    self.assertEqual('v' in screen.active_bindings, candidate)
+                    if not candidate:
+                        with patch.object(app, 'push_screen') as push:
+                            await pilot.press('v')
+                            screen.action_validate()
+                            push.assert_not_called()
+                summary = str(screen.query_one('#coverage-summary', Static).content)
+                self.assertIn('Below recurrence threshold: 1', summary)
+                self.assertIn('Insufficient evidence: 1', summary)
+                keys = screen.active_bindings
+                self.assertTrue({'p', 'q', 'escape', 'question_mark', 'c', 'x', 't'} <= keys.keys())
+                self.assertFalse({'r', 'f', 'a', 'n', 'e', 'g', 'w', 'd'} & keys.keys())
+                build.reset_mock()
+                await pilot.press('r', 'f', 'a', 'n', 'e', 'g', 'w', 'd')
+                self.assertIs(app.screen, screen)
+                build.assert_not_called()
+                with patch.object(app, 'copy_to_clipboard') as copy:
+                    await pilot.press('c', 't', 'x')
+                    self.assertEqual(copy.call_count, 2)
+                    self.assertEqual(table.cursor_type, 'cell')
+                await pilot.press('q')
+                for options, target in (({'disabled': (('spare', 'sshd'),)}, ui.ValidationScreen),
+                                        ({'running': (('live', 'sshd'),), 'count': 20}, ui.ValidationScreen),
+                                        ({}, ui.CustomCandidateScreen)):
+                    inventory = build_findings(*fixture(**options))
+                    run.return_value = inventory
+                    await pilot.press('a')
+                    await app.workers.wait_for_complete()
+                    self.assertIn('v', app.screen.active_bindings)
+                    await pilot.press('v')
+                    self.assertIsInstance(app.screen, target)
+                    self.assertIs(app.screen.inventory, inventory)
+                    self.assertIs(app.screen.decision, inventory.findings[0])
+                    await pilot.press('q', 'q')
+                for inventory in (suppressed, empty):
+                    run.return_value = inventory
+                    await pilot.press('a')
+                    await app.workers.wait_for_complete()
+                    screen = app.screen
+                    self.assertIn('No recommendation', str(screen.query_one('#coverage-summary', Static).content))
+                    self.assertEqual(screen.query_one(DataTable).row_count, len(inventory.decisions))
+                    self.assertNotIn('v', screen.active_bindings)
+                    if inventory.decisions:
+                        self.assertIn('Suppressed / not a recommendation',
+                                      str(screen.query_one('#coverage-detail', Static).content))
+                    else:
+                        self.assertIn('No supported pattern was recognized',
+                                      str(screen.query_one('#coverage-summary', Static).content))
+                    await pilot.press('q')

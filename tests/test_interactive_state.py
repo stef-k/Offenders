@@ -40,7 +40,7 @@ class SelectionTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(app, "push_screen") as push:
                     screen.action_validate()
                     push.assert_not_called()
-                screen._complete(inv, None)
+                screen._complete(inv, None, '7d')
                 self.assertTrue(str(screen.query_one("#coverage-detail", Static).content))
                 key = next(iter(table.rows))
                 with patch.object(DataTable, "cursor_coordinate", new_callable=PropertyMock,
