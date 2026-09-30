@@ -229,7 +229,7 @@ class OffendersApp(App):
     @on(DataTable.CellHighlighted)
     def refresh_table_bindings(self, event: DataTable.RowHighlighted | DataTable.CellHighlighted) -> None:
         """Refresh copy availability when the focused table's selection changes."""
-        if event.data_table is self.focused:
+        if self.screen_stack and event.data_table is self.focused:
             self.screen.refresh_bindings()
 
     def action_help(self) -> None:

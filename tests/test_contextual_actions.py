@@ -216,3 +216,13 @@ class ContextualActionTests(unittest.IsolatedAsyncioTestCase):
                 push.assert_not_called()
             await pilot.press("escape")
             self.assertIs(app.screen, source)
+
+    async def test_late_table_highlight_after_shutdown_is_ignored(self):
+        """A queued report highlight cannot query focus after the screen stack closes."""
+        app = OffendersApp()
+        async with app.run_test():
+            await app.workers.wait_for_complete()
+            table = app.query_one("#offenders", DataTable)
+            event = DataTable.RowHighlighted(table, 0, next(iter(table.rows)))
+        self.assertFalse(app.screen_stack)
+        app.refresh_table_bindings(event)
