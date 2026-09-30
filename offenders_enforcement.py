@@ -116,8 +116,11 @@ def _observe_jail(jail: str) -> JailObservation:
         properties = {}
         try:
             advertised = f2b.get_action_properties(jail, name)
-            for prop in sorted(set(advertised) & f2b.ACTION_PROPERTIES):
+            for prop in sorted((set(advertised) & f2b.ACTION_PROPERTIES) - {'actionstart'}):
                 properties[prop] = f2b.get_action_property(jail, name, prop)
+            # Only the exact stock config-reader sentinel needs raw start facts.
+            if properties.get('chain') == '<known/chain>' and 'actionstart' in advertised:
+                properties['actionstart'] = f2b.get_action_property(jail, name, 'actionstart')
             if 'actionban' not in properties:
                 raise f2b.Fail2BanParseError('Action ban property unavailable')
             characterized = tuple(_characterize(properties, family) for family in families)

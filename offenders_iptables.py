@@ -7,7 +7,7 @@ import ipaddress
 import re
 import shlex
 
-from offenders_fail2ban import Fail2BanParseError, resolve_action_property, run_host_command
+from offenders_fail2ban import Fail2BanParseError, parse_action_property, resolve_action_property, run_host_command
 
 # Bounds apply after the existing timeout runner captures each save stdout.
 IPTABLES_TEXT_LIMIT = 4 * 1024 * 1024
@@ -80,6 +80,32 @@ def _blocking_tokens(tokens: list[str], version: int) -> bool:
         tokens[2] in REJECT_REPLIES[version])
 
 
+def _start_parent_chain(raw: str, ban_chain: str) -> str:
+    """Match only the bounded stock start skeleton; never resolve or evaluate it.
+
+    The RETURN-tail setup and one protocol loop must wire the exact ban chain
+    through agreeing direct parent check/insert rules with identical scope.
+    This supplies expected configuration, not independently observed enforcement.
+    """
+    text = ' '.join(parse_action_property(raw).split())
+    target = re.escape(ban_chain)
+    protocol = r'[A-Za-z0-9][A-Za-z0-9_-]{0,31}'
+    port = r'[A-Za-z0-9][A-Za-z0-9_:-]{0,63}'
+    # Stock oneport, multiport and allports scope; no custom pre-rule or jump.
+    scope = rf'-p \$proto(?: --dport {port}| -m multiport --dports {port}(?:,{port}){{0,14}})?'
+    pattern = (
+        rf'\{{ <iptables> -C {target} -j RETURN >/dev/null 2>&1; \}} \|\| '
+        rf'\{{ <iptables> -N {target} \|\| true; <iptables> -A {target} -j RETURN; \}} '
+        rf"for proto in \$\(echo '{protocol}(?:,{protocol}){{0,7}}' \| sed 's/,/ /g'\); do "
+        rf'\{{ <iptables> -C (?P<parent>{CHAIN_ID.pattern}) (?P<scope>{scope}) -j {target} >/dev/null 2>&1; \}} \|\| '
+        rf'\{{ <iptables> -I (?P=parent) (?P=scope) -j {target}; \}} done'
+    )
+    match = re.fullmatch(pattern, text)
+    if match is None:
+        raise Fail2BanParseError('Unsupported or ambiguous iptables start parent')
+    return match['parent']
+
+
 def classify_iptables_action(properties: Mapping[str, str], *, family: str = 'inet4') -> IptablesAction | None:
     """Require the resolved stock actionban shape without executing shell text.
 
@@ -103,8 +129,11 @@ def classify_iptables_action(properties: Mapping[str, str], *, family: str = 'in
     facts = {**properties, 'actionban': raw.replace('<ip>', 'OFFENDERS_IP')}
     command = resolve_action_property(facts, 'actionban', family=family)
     values = {key: resolve_action_property(properties, key, family=family)
-              for key in ('iptables', 'name', 'chain', 'blocktype')}
+              for key in ('iptables', 'name', 'blocktype')}
     ban_chain = 'f2b-' + values['name']
+    values['chain'] = (_start_parent_chain(properties.get('actionstart', ''), ban_chain)
+                       if properties.get('chain') == '<known/chain>' else
+                       resolve_action_property(properties, 'chain', family=family))
     if not CHAIN_ID.fullmatch(ban_chain) or not CHAIN_ID.fullmatch(values['name']) or not CHAIN_ID.fullmatch(values['chain']):
         raise Fail2BanParseError('Unsafe iptables chain identity')
     if any('\n' in value or '\r' in value for value in (command, *values.values())):

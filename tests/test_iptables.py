@@ -1,5 +1,6 @@
 """Prove compatibility-view evidence and the finite read-only command boundary."""
 from dataclasses import replace
+from pathlib import Path
 import unittest
 from unittest.mock import call, patch
 
@@ -15,6 +16,7 @@ PROPERTIES = {
     'blocktype': 'REJECT --reject-with icmp-port-unreachable',
     'blocktype?family=inet6': 'REJECT --reject-with icmp6-port-unreachable',
 }
+ACTIONSTART = (Path(__file__).parent / 'fixtures' / 'iptables-actionstart.txt').read_text().removesuffix('\n')
 
 
 def save_text(source='192.0.2.1/32', target='REJECT --reject-with icmp-port-unreachable'):
@@ -54,6 +56,17 @@ class IptablesTests(unittest.TestCase):
         self.assertEqual(self.evidence(save_text(target='DROP'), action=drop).outcome, 'confirmed')
         # Save tools may normalize REJECT reply spelling; terminal targets agree.
         self.assertEqual(self.evidence(save_text(target='REJECT')).outcome, 'confirmed')
+
+    def test_stock_known_chain_uses_start_parent_for_both_families(self):
+        """Config-time known/chain is resolved in public actionstart, not a runtime tag."""
+        properties = {**PROPERTIES, 'chain': '<known/chain>', 'actionstart': ACTIONSTART}
+        action = ipt.classify_iptables_action(properties)
+        self.assertEqual(action, self.action)
+        self.assertEqual(self.evidence(save_text(), action=action).outcome, 'confirmed')
+        v6 = ipt.classify_iptables_action(properties, family='inet6')
+        self.assertEqual(v6, ipt.classify_iptables_action(PROPERTIES, family='inet6'))
+        self.assertEqual(self.evidence(save_text('2001:db8::1', 'REJECT --reject-with icmp6-port-unreachable'),
+                                       '2001:db8::1', v6).outcome, 'confirmed')
 
     def test_required_direct_facts_are_independent(self):
         """An unrelated table or chain cannot provide a missing filter fact."""
