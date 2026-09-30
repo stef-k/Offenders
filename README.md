@@ -19,6 +19,9 @@ Current Offenders dashboard using synthetic documentation data.
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
 - Review Coverage evidence and explicitly validate copy-only filter candidates.
+- Open manual `n Enforcement` to compare fresh current bans with supported
+  nftables, iptables or UFW rule evidence; direct observation is not packet or
+  reachability proof (see [Usage](https://stef-k.github.io/Offenders/usage.html#manual-enforcement-verification)).
 
 Reports and investigation are read-only with respect to Fail2Ban configuration
 and bans. There is no ban/unban action or automatic Fail2Ban mutation. Coverage
@@ -28,7 +31,9 @@ root; validation also uses temporary local sample files.
 
 ## Quick start
 
-Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban >=1.0.2**.
+Supported baseline: **Ubuntu 24.04 / Python >=3.12 / Fail2Ban 1.0.2**.
+Qualified stock Enforcement action versions: **1.0.2, 1.1.0 and 1.1.1**;
+support remains limited to recognized runtime shapes and fails closed.
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
 be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 

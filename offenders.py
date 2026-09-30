@@ -20,6 +20,7 @@ from offenders_activity import ActivityWorkers, OffendersFooter
 from offenders_help import HelpScreen, context_text, help_context
 from offenders_help_content import HELP_BINDING, project_information
 from offenders_export_ui import ExportScreen
+from offenders_enforcement_ui import EnforcementScreen
 from offenders_filter import filter_rows
 from offenders_summary_ui import DashboardSummary
 from offenders_recommendations_ui import RecommendationsScreen
@@ -85,6 +86,7 @@ class OffendersApp(App):
         ("f", "filter", "Filter"),
         ("v", "view", "View"),
         ("a", "coverage", "Coverage"),
+        ("n", "enforcement", "Enforcement"),
         ("e", "export", "Export"),
         ("g", "geoip", "GeoIP"),
         ("c", "copy_selection", "Copy"),
@@ -211,6 +213,8 @@ class OffendersApp(App):
         """Limit global Help to product screens, excluding recursive Help."""
         if action == "help":
             return help_context(self) is not None
+        if action == "enforcement":
+            return self.screen is self.default_screen
         return super().check_action(action, parameters)
 
     def action_help(self) -> None:
@@ -233,6 +237,11 @@ class OffendersApp(App):
         """Open one manual analysis only from the active dashboard."""
         if self.screen is self.default_screen:
             self.push_screen(RecommendationsScreen())
+
+    def action_enforcement(self) -> None:
+        """Start manual verification only from the active dashboard."""
+        if self.screen is self.default_screen:
+            self.push_screen(EnforcementScreen())
 
     def action_view(self) -> None:
         """Keep summary cycling local to the dashboard screen."""

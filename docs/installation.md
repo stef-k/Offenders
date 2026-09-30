@@ -7,7 +7,9 @@ title: Installation and permissions
 ## Requirements and permissions
 
 The supported baseline is **Ubuntu 24.04 LTS / Python 3.12+**, with separately
-installed **Fail2Ban >=1.0.2**. pipx installs Python dependencies automatically.
+installed **Fail2Ban 1.0.2**. Stock Enforcement action compatibility is qualified
+for **1.0.2, 1.1.0 and 1.1.1**, limited to recognized runtime shapes and failing
+closed for unsupported forms. pipx installs Python dependencies automatically.
 
 The dashboard needs Fail2Ban file logs and permission to read them. Defaults are
 `/var/log/fail2ban.log`, its `.1` rotation, and `.N.gz` rotations. Journal-only
@@ -51,6 +53,61 @@ Registration (RDAP) and RDNS (PTR) use required Python dependencies supplied by
 pipx: classic `ipwhois` and `dnspython`. No separate lookup executables are needed.
 RDNS uses the host DNS resolver configuration; Registration needs outbound RDAP
 HTTP access. Network failures appear per request and do not disable the actions.
+
+## Optional Enforcement read permissions
+
+Dashboard `n Enforcement` performs extra runtime-action and firewall reads only
+when explicitly opened or rechecked. Missing permission affects that screen;
+ordinary reports require no firewall permission. Direct rule/object observation
+is not packet or reachability proof.
+
+An administrator can adapt the following **read-only** sudoers example on Ubuntu
+24.04 (sudo >=1.9.10). Resolve each absolute executable path with `command -v`
+on the target system first, replace `OPERATOR`, and omit unused backend/save
+entries. These anchored argument regexes constrain jail/action identifiers to
+the product's 128-character grammar and properties to its finite allowlist.
+The nft table grammar is independently bounded. Save commands use `""` to
+require **no arguments**; omitting it would permit arbitrary arguments.
+
+```sudoers
+# Fresh status, finite runtime-action reads and the validated daemon namespace link.
+Cmnd_Alias OFFENDERS_ENFORCEMENT = \
+    /usr/bin/fail2ban-client status, \
+    /usr/bin/fail2ban-client ^status [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actions$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actionproperties [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} action [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} (actionban|actionstart|name|nftables|table_family|table|chain|chain_type|chain_hook|addr_set(\?family=inet6)?|blocktype(\?family=inet6)?|iptables(\?family=inet6)?|lockingopt|add|destination|application|comment|kill-mode|kill)$, \
+    /usr/bin/readlink ^/proc/[1-9][0-9]{0,9}/ns/net$, \
+    /usr/sbin/nft ^--json --numeric list table (inet|ip|ip6) [A-Za-z0-9_][A-Za-z0-9_.:+-]{0,127}$, \
+    /usr/sbin/iptables-save "", /usr/sbin/ip6tables-save "", \
+    /usr/sbin/iptables-nft-save "", /usr/sbin/ip6tables-nft-save "", \
+    /usr/sbin/iptables-legacy-save "", /usr/sbin/ip6tables-legacy-save "", \
+    /usr/sbin/ufw status, /usr/sbin/ufw show added
+OPERATOR ALL=(root) NOPASSWD: OFFENDERS_ENFORCEMENT
+```
+
+Validate the adapted file with `visudo -c -f /path/to/file` before installing it
+through `visudo`, then exercise the actual reads as the non-root operator.
+The example's argument matching was syntax-checked and exercised with a non-root
+user in disposable Ubuntu 24.04; representative systemd/Fail2Ban host acceptance
+remains a separate release gate. Do not replace these rules with unrestricted
+`fail2ban-client *`, `nft *`, `iptables *`, `ufw *`, shell or wrapper access.
+
+Only supported runtime action descriptors authorize firewall reads. Native nft
+uses `nft --json --numeric list table FAMILY TABLE`; iptables uses the matching
+bare save binary; UFW uses only `ufw status`, `ufw show added` and bare
+`iptables-save` / `ip6tables-save`. There is no fallback or mutation command.
+The additional `actionstart` read is used only when advertised and runtime
+`chain` is exactly `<known/chain>`, to identify one stock-compatible iptables
+parent chain. Its text is never executed; `known/chain` is never queried.
+Namespace proof reads MainPID through non-sudo
+`systemctl show --property=MainPID --value fail2ban.service`, then reads
+`/proc/self/ns/net` as the current user and only the validated numeric daemon link
+through `sudo -n /usr/bin/readlink /proc/<MainPID>/ns/net`. It immediately re-reads
+MainPID non-sudo and requires the same nonzero PID before comparing identities.
+A changed/unreadable PID, unreadable identity or namespace mismatch prevents all
+firewall reads. Keep the readlink allowance anchored to this one numeric path:
+no options, arbitrary procfs reads, sudo systemctl or namespace switching.
 
 ## Install and upgrade
 

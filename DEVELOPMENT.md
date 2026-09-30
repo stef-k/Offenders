@@ -34,6 +34,8 @@ explicit inventory. Neither workflow silently starts the other.
 | Report model, period selection, top-offender enrichment | `offenders_report.py` |
 | Normalized ban history from current, rotated, and gzip logs | `offenders_events.py` |
 | Bounded commands, Fail2Ban status/settings/source-query parsing | `offenders_fail2ban.py` |
+| Manual Enforcement models and bracketed backend orchestration | `offenders_enforcement.py` |
+| Enforcement screen, recheck and result presentation | `offenders_enforcement_ui.py` |
 | In-memory display filtering | `offenders_filter.py` |
 | Aggregate projections and presentation | `offenders_aggregate.py`, `offenders_summary_ui.py` |
 | Jail history and current-ban details | `offenders_jail_ui.py` |
@@ -112,7 +114,7 @@ stale-result guards still protect delivery. Cancellation releases actual activit
 does not forcibly terminate bounded backend threads or replace backend locks.
 GeoIP's app-lifetime owner continues updating after diagnostics closes.
 
-The current asynchronous audit covers all ten worker paths:
+The current asynchronous audit covers these worker paths:
 
 | Trigger | Worker / feedback |
 | --- | --- |
@@ -123,6 +125,7 @@ The current asynchronous audit covers all ten worker paths:
 | Explicit Registration / RDNS | `CommandOutputModal._run`: provider-specific working text |
 | IP mount / successful new report | `IPInspectorScreen._project`: loading details |
 | Coverage mount | `_analyze`: analyzing coverage |
+| Enforcement mount / idle recheck | `_check`: checking enforcement |
 | Selected filter validation | `_validate`: validating |
 | Custom template action | `_generate`: generating and validating |
 | ASN/Country selection / successful new report | `DashboardSummary._project`: loading summary |
@@ -133,6 +136,52 @@ one of the workers above inherits activity automatically. Duplicate report,
 GeoIP, validation, and candidate actions retain their single-flight rejection
 feedback. `tests/test_activity.py` audits runtime scheduling for unmanaged work
 and proves generic participation; existing product tests cover detailed states.
+
+## Manual Enforcement boundary
+
+`check_enforcement()` acquires a fresh snapshot through the foundation's core
+status and finite action-property APIs, independently of `Report`. Opening and
+closing use the same observation builder; fingerprints hash discovered action
+identities and exact queried allowlisted facts. Safe jail/action selectors use
+the foundation's bounded identity grammar. A jail without current bans needs no
+actions or firewall bracket. Namespace proof precedes every firewall reader.
+
+Three explicit classifiers select exactly one descriptor per action/IP family;
+ambiguity fails closed. A supported action can coexist with unclassified or
+unreadable siblings. Backend acquisition remains scoped: nft table scopes,
+iptables save binaries and UFW families are deduplicated by their reviewed
+readers. UFW status and added rules are acquired once per check. Separate
+iptables and UFW reads remain separate evidence contracts even when both use
+the same save binary; there is no command cache or backend framework.
+
+Closing unreadability takes precedence over readable relevant change, which
+takes precedence over direct backend evidence. Relevant current-ban sets and
+action identities are compared independently of unrelated jail-list changes.
+Required action facts/descriptors and readable daemon/namespace identities are
+bracketed. Unreadable siblings do not erase supported action rows. Final immutable
+results retain stable reasons, bounded sibling identities and UFW managed/live
+facts, with no raw commands, dumps or diagnostic streams.
+
+Fully readable unsupported action rows also compare closing jail membership and
+action facts. They acquire no firewall evidence and require no namespace equality.
+Opening metadata-unavailable rows remain unverifiable; only `no-current-bans`
+intentionally reports opening membership without a closing comparison.
+
+The screen owns one Textual thread worker per opening/idle recheck, clears rows
+before reacquiring, and rejects cancelled/replaced/closed delivery. Generation
+and immutable row identity form table keys so queued events cannot select a new
+check's same-looking row. It uses shared selection helpers and `OffendersFooter`;
+there is no enforcement timer, CLI/export schema or persistence. Cancellation
+does not terminate a bounded host read already executing.
+
+Focused tests cover bracketing and cross-backend batching at public seams, then
+real Textual lifecycle/selection/Help controls. Package qualification is separate
+from representative systemd/Fail2Ban host acceptance. The latter requires
+independent review of the exact draft PR head first; keep #113 draft/unmerged and
+#83 open until that evidence and the parent checklist are reconciled. The
+operator sudoers example must be syntax-checked and exercised as a non-root
+user on supported Ubuntu 24.04. Disposable synthetic rule evidence does not
+prove packet blocking or qualify a representative live host.
 
 ## GeoIP lifecycle
 
@@ -236,6 +285,8 @@ eight-second, non-interactive sudo runner. Action identities are validated befor
 reuse; discovered property names never grant query permission. The finite
 `ACTION_PROPERTIES` whitelist covers stock 1.0.2/1.1.0 actionban/static identifiers,
 IPv6 overrides, and UFW rule/kill scope, including iptables' `lockingopt` reference.
+It also permits raw `actionstart` reads/fingerprints, without adding that command
+to `ACTION_BASE_PROPERTIES` or enabling static resolution of it or `known/*`.
 Action text has a 64 KiB parser/retention bound and each jail has at most 32 actions;
 limits reject evidence rather than silently truncating it.
 
@@ -256,10 +307,14 @@ IPv6 overrides; diagnostic or transient fields are rejected. It detects changes,
 without classifying actions or acquiring firewall state.
 
 `offenders_host.get_fail2ban_namespace` reads MainPID through non-sudo
-`systemctl show --property=MainPID --value fail2ban.service`, then reads the
-`/proc/self/ns/net` and `/proc/<pid>/ns/net` symlink identities. Its frozen result
-retains PID and available identities with `same`, `different` or `unavailable`.
-Command/PID/proc failures produce `unavailable`; no namespace is entered or changed.
+`systemctl show --property=MainPID --value fail2ban.service`, then reads
+`/proc/self/ns/net` directly and the validated `/proc/<pid>/ns/net` through the
+bounded `sudo -n /usr/bin/readlink` seam. It immediately re-reads MainPID non-sudo;
+only the same nonzero PID permits comparison of the exact `net:[N]` identities.
+Its frozen result retains PID and available identities with `same`, `different`
+or `unavailable`. Command/PID/proc failures and an unstable PID produce
+`unavailable` without retaining the privileged identity. The opening/closing
+Enforcement bracket remains the outer race check; no namespace is entered or changed.
 These seams have no dashboard/report caller and perform no verification bracket
 or UI orchestration. Fixture provenance and upstream limits are recorded in
 [tests/fixtures/README.md](tests/fixtures/README.md).
@@ -288,9 +343,9 @@ with the configured drop/reject verdict in the same rule. The supported JSON
 subset covers stock multiport/allports matches and optional counters. Prefix,
 interval, timed-element and unfamiliar rule forms remain unverifiable. Reasons
 are bounded identities rather than command output. These are direct backend
-facts: later integration must establish namespace identity and opening/closing
-ban/action stability before publishing confirmed/missing outcomes. There is no
-dashboard, ordinary Report, export, or full race-bracket caller in this child.
+facts: `offenders_enforcement` establishes namespace identity and opening/closing
+ban/action stability before publishing confirmed/missing outcomes. The backend
+itself has no Textual, ordinary Report or export responsibility.
 
 ### Iptables compatibility direct evidence
 
@@ -304,6 +359,25 @@ qualify. Custom executable paths, wrappers, compound commands, arbitrary targets
 and extra executable flags are unsupported. Missing, unsafe or unresolved
 properties raise `Fail2BanParseError`; supported targets are DROP and REJECT,
 including finite family-specific REJECT replies.
+
+Concrete runtime `chain` values keep the static resolution path. Only an exact
+raw `chain=<known/chain>` uses the public raw `actionstart` value instead: this
+config-reader sentinel is not a readable `CommandAction` property. The shared
+observation builder excludes `actionstart` from normal advertised-property reads
+and acquires it only when advertised and the successfully read chain is exactly
+that sentinel. Its exact value participates in both bracket fingerprints.
+
+The bounded start matcher accepts exactly two stock forms: the 1.0.2/1.1.0 direct
+parent and the 1.1.1 single-parent chain iterator. Both require the stock RETURN-tail
+setup, one protocol loop, identical oneport/multiport/allports scope and the exact
+already-derived `f2b-<name>` target. Direct `-C`/`-I` parents must agree on one
+concrete `CHAIN_ID`. The iterator requires the exact stock
+`for chain in $(echo '<PARENT>' | sed 's/,/ /g')` structure, one concrete `CHAIN_ID`
+source, literal `$chain` in both rules and balanced `done; done` closure. Both
+normalize to the same descriptor parent. Missing, unresolved, unsafe, multiple-parent
+or custom syntax remains unverifiable. This raw text is never statically resolved,
+shell-evaluated or executed. It supplies expected configuration only; the existing
+save verifier independently proves the live parent jump and host rule.
 
 `read_iptables_saves` reads each selected compatibility view once through
 `sudo -n <matching-binary>-save`, with **no arguments** and an eight-second
@@ -322,8 +396,8 @@ exact source-only host rule with the configured terminal DROP/REJECT target.
 Bare hosts and /32 or /128 normalize identically; networks, unrelated chains and
 custom jump paths cannot confirm a ban. Unfamiliar relevant rule forms stay
 unverifiable, and no recursive chain traversal or packet-path evaluation occurs.
-Later integration owns namespace and opening/closing ban/action stability gates;
-this backend has no UI, ordinary Report, export or full race-bracket caller.
+`offenders_enforcement` owns namespace and opening/closing ban/action stability
+gates; this backend has no Textual, ordinary Report or export responsibility.
 
 ### UFW direct evidence
 
@@ -386,8 +460,8 @@ the evidence as a whole.
 The Ubuntu 24.04 disposable-container captures and sudo/locale qualification are
 documented in [fixture provenance](tests/fixtures/README.md#ufw-status-and-live-save-output).
 They establish the output contract, not full supported-host acceptance. Later
-integration owns namespace and opening/closing action/ban stability gates;
-this backend has no UI, ordinary Report/export caller, timer or race orchestrator.
+`offenders_enforcement` owns namespace and opening/closing action/ban stability
+gates; this backend has no Textual, ordinary Report/export or timer responsibility.
 Direct rule observation does not prove packet reachability or arbitrary UFW
 before/after rule correctness. #113 owns the consolidated feature changelog.
 

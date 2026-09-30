@@ -9,6 +9,7 @@ from textual.widgets import Static
 from offenders_activity import OffendersFooter
 from offenders_candidate_ui import CustomCandidateScreen
 from offenders_export_ui import ExportScreen
+from offenders_enforcement_ui import EnforcementScreen
 from offenders_geoip_ui import GeoIPScreen
 from offenders_help_content import product_guide
 from offenders_ip_ui import CommandOutputModal, IPInspectorScreen
@@ -29,13 +30,18 @@ class HelpContext:
 
 DASHBOARD = HelpContext(
     "Dashboard", ("refresh", "period", "filter", "view", "enter", "export", "geoip",
-                  "coverage", "registration", "rdns", "copy_selection", "toggle_cursor"),
+                  "coverage", "enforcement", "registration", "rdns", "copy_selection", "toggle_cursor"),
     "The dashboard combines historical activity with current jail state. Reports refresh "
     "automatically; a failed refresh preserves the last successful snapshot.",
     "Open selected real IP or active jail (where applicable)",
 )
 # Enter supplements correspond to DataTable selection events, not screen bindings.
 CONTEXTS = {
+    EnforcementScreen: HelpContext(
+        "Enforcement", ("recheck", "close"),
+        "Opening runs one read-only check; Recheck is available when idle. Each action/IP retains "
+        "its own outcome. Old evidence is cleared on recheck. Direct rule/object observation "
+        "is not packet or reachability proof; this workflow never joins report refresh or CSV Export."),
     JailDetailScreen: HelpContext(
         "Jail detail", ("expand_history", "enter", "dismiss"),
         "Live jail counters/membership and selected-period historical bans are different facts. "

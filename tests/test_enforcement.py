@@ -1,0 +1,372 @@
+"""Cross-backend bracketing contracts, using the reviewed public reader seams."""
+from contextlib import ExitStack
+from dataclasses import replace
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+import offenders_enforcement as enforcement
+import offenders_nftables as nft
+import offenders_iptables as ipt
+import offenders_ufw as ufw
+from offenders_fail2ban import JailStatus, Fail2BanParseError, CommandFailure, CommandResult
+from offenders_host import NetworkNamespaceIdentity, NamespaceState
+from test_nftables import PROPERTIES as NFT
+from test_iptables import ACTIONSTART, PROPERTIES as IPT, save_text
+from test_ufw import PROPERTIES as UFW
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+SAME = NetworkNamespaceIdentity(NamespaceState.SAME, 42, 'net:[1]', 'net:[1]')
+IP = '192.0.2.1'
+
+
+def status(ips=(IP,)):
+    """Return only core current-ban data; no ordinary report participates."""
+    return JailStatus('guard', 0, 0, len(ips), len(ips), tuple(ips))
+
+
+class EnforcementTests(unittest.TestCase):
+    """Exercise real classifiers/verifiers while replacing only external reads."""
+
+    def setUp(self):
+        """Configure a stable default bracket and reviewed normalized evidence."""
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.properties = {'packet-action': dict(NFT)}
+        self.list = self.mock('get_jail_list', return_value=['guard'])
+        self.core = self.mock('get_jail_core_status', return_value=status())
+        self.actions = self.mock('get_jail_actions', side_effect=lambda jail: tuple(self.properties))
+        self.names = self.mock('get_action_properties', side_effect=lambda jail, act: tuple(self.properties[act]))
+        self.value = self.mock('get_action_property', side_effect=lambda jail, act, prop: self.properties[act][prop])
+        self.namespace = self.stack.enter_context(patch.object(enforcement.host, 'get_fail2ban_namespace', return_value=SAME))
+        self.nft = self.stack.enter_context(patch.object(nft, 'read_nft_tables', return_value={
+            ('inet', 'evidence'): nft.parse_nft_table((FIXTURES / 'nft-table.json').read_text(), 'inet', 'evidence')}))
+        self.ipt = self.stack.enter_context(patch.object(ipt, 'read_iptables_saves', return_value={
+            'iptables-save': ipt.parse_iptables_save(save_text(), 'iptables-save'),
+            'ip6tables-save': ipt.parse_iptables_save(save_text('2001:db8::1', 'REJECT'), 'ip6tables-save')}))
+        self.ufw_status = self.stack.enter_context(patch.object(ufw, 'read_ufw_status', return_value=ufw.UfwStatus(True)))
+        self.ufw_added = self.stack.enter_context(patch.object(ufw, 'read_ufw_added', return_value=
+            ufw.parse_ufw_added((FIXTURES / 'ufw-added.txt').read_text())))
+        self.ufw_save = self.stack.enter_context(patch.object(ufw, 'read_ufw_saves', return_value={
+            v: ufw.parse_ufw_save((FIXTURES / f'ufw-v{v}.save').read_text(), v) for v in (4, 6)}))
+
+    def mock(self, name, **kwargs):
+        """Patch the bounded Fail2Ban read boundary, leaving policy unmocked."""
+        return self.stack.enter_context(patch.object(enforcement.f2b, name, **kwargs))
+
+    def row(self):
+        """Most race cases have exactly one action/IP result."""
+        result = enforcement.check_enforcement()
+        self.assertEqual(len(result.rows), 1)
+        return result.rows[0]
+
+    def test_stable_observed_absent_and_permission_failure(self):
+        """A stable bracket preserves the backend outcome and its machine reason."""
+        self.assertEqual((self.row().outcome, self.row().backend_reason), ('confirmed', 'entry-observed'))
+        self.nft.return_value = {('inet', 'evidence'): nft.NftSnapshot('inet', 'evidence')}
+        self.assertEqual((self.row().outcome, self.row().reason), ('missing', 'table-absent'))
+        self.nft.return_value = {('inet', 'evidence'): nft.NftSnapshot('inet', 'evidence', reason='non-zero-exit')}
+        self.assertEqual((self.row().outcome, self.row().reason), ('unverifiable', 'non-zero-exit'))
+
+    def test_ban_add_remove_and_jail_disappearance_override_evidence(self):
+        """Relevant membership changes invalidate both positive and negative evidence."""
+        for closing in [status(()), status((IP, '192.0.2.9'))]:
+            for snapshot in self.nft.return_value, {('inet', 'evidence'): nft.NftSnapshot('inet', 'evidence') }:
+                with self.subTest(closing=closing.banned_ips, snapshot=snapshot):
+                    self.nft.return_value = snapshot
+                    self.core.side_effect = [status(), closing]
+                    self.assertEqual(self.row().outcome, 'changed-during-check')
+        self.core.side_effect = None
+        self.list.side_effect = [['guard'], []]
+        self.assertEqual(self.row().reason, 'jail-disappeared')
+
+    def test_action_fingerprint_and_action_identity_changes(self):
+        """Exact queried facts and discovered action identities are bracketed."""
+        def change(actions):
+            self.properties['packet-action']['chain'] = 'other'
+            return self.nft.return_value
+        self.nft.side_effect = change
+        self.assertEqual(self.row().reason, 'action-changed')
+        self.nft.side_effect = None
+        self.actions.side_effect = [('packet-action',), ()]
+        self.assertEqual(self.row().outcome, 'changed-during-check')
+
+    def test_namespace_gate_and_closing_identity_precedence(self):
+        """Opening uncertainty prohibits all firewall reads; unreadability is not change."""
+        for state in [NamespaceState.DIFFERENT, NamespaceState.UNAVAILABLE]:
+            self.namespace.return_value = replace(SAME, state=state)
+            self.assertEqual(self.row().outcome, 'unverifiable')
+            self.nft.assert_not_called()
+            self.ipt.assert_not_called()
+            self.ufw_status.assert_not_called()
+            self.ufw_added.assert_not_called()
+            self.ufw_save.assert_not_called()
+        for closing in [replace(SAME, main_pid=43), replace(SAME, fail2ban_namespace='net:[2]', state=NamespaceState.DIFFERENT)]:
+            self.namespace.side_effect = [SAME, closing]
+            self.assertEqual(self.row().outcome, 'changed-during-check')
+        self.namespace.side_effect = [SAME, NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)]
+        self.assertEqual(self.row().reason, 'closing-namespace-unavailable')
+
+    def test_no_bans_unknown_and_metadata_unavailable_are_distinct(self):
+        """Valid empty membership needs no actions/firewall; failures are never unsupported."""
+        self.core.return_value = status(())
+        row = self.row()
+        self.assertEqual((row.outcome, row.ip, row.action, row.backend), ('no-current-bans', '', '', ''))
+        self.actions.assert_not_called()
+        self.nft.assert_not_called()
+        self.list.assert_called_once()
+        self.core.assert_called_once()
+        self.core.return_value = status()
+        self.properties = {'notification': {'actionban': 'notify'}}
+        row = self.row()
+        self.assertEqual((row.outcome, row.action, row.backend), ('unsupported-action', '', ''))
+        self.names.side_effect = Fail2BanParseError('private raw diagnostics')
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.nft.assert_not_called()
+
+    def test_stable_unsupported_action_is_bracketed_without_firewall_reads(self):
+        """Readable unsupported state needs closing Fail2Ban facts, not namespace proof."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for state in (NamespaceState.SAME, NamespaceState.DIFFERENT, NamespaceState.UNAVAILABLE):
+            with self.subTest(namespace=state):
+                self.namespace.return_value = replace(SAME, state=state)
+                self.core.reset_mock()
+                self.actions.reset_mock()
+                self.names.reset_mock()
+                row = self.row()
+                self.assertEqual((row.outcome, row.reason), ('unsupported-action', 'unsupported-action'))
+                self.assertEqual(self.core.call_count, 2)
+                self.assertEqual(self.actions.call_count, 2)
+                self.assertEqual(self.names.call_count, 2)
+        self.properties['other-notification'] = {'actionban': 'notify'}
+        self.actions.side_effect = [('notification', 'other-notification'), ('other-notification', 'notification')]
+        self.assertEqual(self.row().outcome, 'unsupported-action')
+        for reader in (self.nft, self.ipt, self.ufw_status, self.ufw_added, self.ufw_save):
+            reader.assert_not_called()
+
+    def test_unsupported_ban_changes_and_jail_disappearance(self):
+        """Removed or added bans and a vanished jail invalidate opening unsupported facts."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for closing in (status(()), status((IP, '192.0.2.9'))):
+            with self.subTest(closing=closing.banned_ips):
+                self.core.side_effect = [status(), closing]
+                row = self.row()
+                self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'banned-ips-changed'))
+        self.core.side_effect = None
+        self.list.side_effect = [['guard'], []]
+        row = self.row()
+        self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'jail-disappeared'))
+
+    def test_unsupported_action_identity_and_readable_shape_changes(self):
+        """Unsupported facts become stale when identities, properties or support change."""
+        for closing in ({'other': {'actionban': 'notify'}},
+                        {'notification': {'actionban': 'notify-other'}},
+                        {'notification': dict(NFT)}):
+            with self.subTest(closing=closing):
+                states = iter(({'notification': {'actionban': 'notify'}}, closing))
+                def list_jails():
+                    """Change runtime facts exactly at the closing Fail2Ban boundary."""
+                    self.properties = next(states)
+                    return ['guard']
+                self.list.side_effect = list_jails
+                self.assertEqual(self.row().outcome, 'changed-during-check')
+        self.nft.assert_not_called()
+
+    def test_unsupported_closing_metadata_unreadable(self):
+        """Closing read failures outrank changes without inventing supported evidence."""
+        self.properties = {'notification': {'actionban': 'notify'}}
+        for reader, opening in ((self.list, ['guard']), (self.core, status()),
+                                (self.actions, ('notification',)), (self.names, ('actionban',)),
+                                (self.value, 'notify')):
+            with self.subTest(reader=reader):
+                original = reader.side_effect
+                try:
+                    reader.side_effect = [opening, Fail2BanParseError('private diagnostics')]
+                    self.assertEqual(self.row().outcome, 'unverifiable')
+                finally:
+                    reader.side_effect = original
+        self.core.side_effect = [status(), status((IP, '192.0.2.9'))]
+        self.names.side_effect = [('actionban',), Fail2BanParseError('private diagnostics')]
+        self.assertEqual(self.row().outcome, 'unverifiable')
+
+    def test_mixed_supported_and_unsupported_rows_share_closing_state(self):
+        """Another jail's unsupported race cannot bypass closing or erase supported evidence."""
+        ipv6 = '2001:db8::1'
+        self.list.return_value = ['guard', 'notifications']
+        self.core.side_effect = lambda jail: status((IP,)) if jail == 'guard' else status((ipv6,))
+        self.actions.side_effect = lambda jail: ('packet-action',) if jail == 'guard' else ('notification',)
+        self.properties['notification'] = {'actionban': 'notify'}
+        def change_unsupported(actions):
+            """Mutate only the unsupported jail's facts during supported acquisition."""
+            self.properties['notification']['actionban'] = 'notify-other'
+            return self.nft.return_value
+        self.nft.side_effect = change_unsupported
+        rows = enforcement.check_enforcement().rows
+        self.assertEqual([(row.ip, row.outcome) for row in rows],
+                         [(IP, 'confirmed'), (ipv6, 'changed-during-check')])
+        self.assertEqual(rows[0].backend_reason, 'entry-observed')
+        self.assertEqual(rows[1].backend_reason, '')
+        self.nft.assert_called_once()
+        self.assertEqual(len(self.nft.call_args.args[0]), 1)
+        self.ipt.assert_not_called()
+        self.ufw_status.assert_not_called()
+
+        for namespace in ([replace(SAME, state=NamespaceState.DIFFERENT)],
+                          [NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)],
+                          [SAME, NetworkNamespaceIdentity(NamespaceState.UNAVAILABLE)]):
+            with self.subTest(namespace=namespace):
+                self.namespace.side_effect = namespace
+                self.core.reset_mock()
+                rows = enforcement.check_enforcement().rows
+                self.assertEqual([row.outcome for row in rows], ['unverifiable', 'unsupported-action'])
+                self.assertEqual(self.core.call_count, 4)
+
+    def test_supported_action_survives_unclassified_or_unreadable_sibling(self):
+        """A sibling is retained as bounded detail without erasing a supported result."""
+        self.properties['notification'] = {'actionban': 'notify'}
+        self.assertEqual(self.row().unclassified_actions, ('notification',))
+        original = self.names.side_effect
+        def read_names(jail, act):
+            """Only the sibling's metadata is unreadable."""
+            if act == 'notification':
+                raise Fail2BanParseError('secret')
+            return original(jail, act)
+        self.names.side_effect = read_names
+        row = self.row()
+        self.assertEqual((row.outcome, row.unavailable_actions), ('confirmed', ('notification',)))
+
+    def test_closing_required_metadata_failure_outranks_readable_change(self):
+        """Closing partial data is unverifiable even if another fact also changed."""
+        self.names.side_effect = [tuple(NFT), Fail2BanParseError('secret')]
+        self.core.side_effect = [status(), status((IP, '192.0.2.9'))]
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.names.side_effect = lambda jail, act: tuple(NFT)
+        self.core.side_effect = [status(), Fail2BanParseError('secret')]
+        self.assertEqual(self.row().reason, 'closing-state-unavailable')
+
+    def test_unrelated_jail_changes_do_not_invalidate_stable_rows(self):
+        """The closing list limits acquisition to opening jails, without global equality."""
+        self.list.side_effect = [['guard'], ['guard', 'unrelated']]
+        self.assertEqual(self.row().outcome, 'confirmed')
+        self.assertEqual([c.args for c in self.core.call_args_list], [('guard',), ('guard',)])
+
+    def test_multiple_supported_actions_stay_separate(self):
+        """A missing iptables path cannot be hidden by a confirmed nftables path."""
+        self.properties['second'] = dict(IPT)
+        self.ipt.return_value = {'iptables-save': ipt.IptablesSnapshot('iptables-save')}
+        rows = enforcement.check_enforcement().rows
+        self.assertEqual([(r.action, r.backend, r.outcome) for r in rows],
+                         [('packet-action', 'nftables', 'confirmed'), ('second', 'iptables', 'missing')])
+        self.ufw_status.assert_not_called()
+
+    def test_ambiguous_classifiers_fail_closed(self):
+        """Dispatch cannot select by classifier ordering."""
+        with patch.object(ipt, 'classify_iptables_action', return_value=ipt.classify_iptables_action(IPT)):
+            self.assertEqual(self.row().reason, 'ambiguous-action')
+        self.nft.assert_not_called()
+        self.ipt.assert_not_called()
+
+    def test_property_allowlist_and_backend_batches(self):
+        """Only advertised allowed properties are queried; readers receive whole batches."""
+        self.properties['packet-action']['arbitrary'] = 'never queried'
+        self.properties['second'] = dict(IPT)
+        self.properties['third'] = dict(UFW)
+        for properties in self.properties.values():
+            properties['actionstart'] = 'never read for concrete/nft/UFW actions'
+        self.core.return_value = status((IP, '2001:db8::1'))
+        result = enforcement.check_enforcement()
+        self.assertEqual(len(result.rows), 6)
+        self.assertNotIn('arbitrary', [c.args[2] for c in self.value.call_args_list])
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        for reader in [self.nft, self.ipt, self.ufw_save]:
+            reader.assert_called_once()
+            self.assertEqual(len(reader.call_args.args[0]), 2)
+        self.ufw_status.assert_called_once()
+        self.ufw_added.assert_called_once()
+        self.assertEqual(result.rows[2].connection_termination, 'not-requested')
+
+    def test_exact_sentinel_conditionally_reads_start_in_both_brackets(self):
+        """Only the exact sentinel reads start; public known/* discovery grants nothing."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>', 'actionstart': ACTIONSTART,
+                                             'known/chain': 'never read', 'arbitrary': 'never read'}}
+        self.core.return_value = status((IP, '2001:db8::1'))
+        self.assertEqual([row.outcome for row in enforcement.check_enforcement().rows], ['confirmed', 'confirmed'])
+        queried = [c.args[2] for c in self.value.call_args_list]
+        self.assertEqual(queried.count('actionstart'), 2)
+        self.assertNotIn('known/chain', queried)
+        self.assertNotIn('arbitrary', queried)
+        self.ipt.assert_called_once()
+        self.properties['packet-action']['chain'] = ' <known/chain>'
+        self.value.reset_mock()
+        self.assertTrue(all(row.outcome == 'unverifiable' for row in enforcement.check_enforcement().rows))
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+
+    def test_sentinel_without_readable_advertised_start_fails_closed(self):
+        """Missing, unadvertised or failed start/chain reads authorize no firewall read."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>'}}
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.properties['packet-action']['actionstart'] = ACTIONSTART
+        self.names.side_effect = lambda jail, act: tuple(prop for prop in self.properties[act] if prop != 'actionstart')
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.names.side_effect = lambda jail, act: tuple(self.properties[act])
+        original = self.value.side_effect
+        def denied_start(jail, act, prop):
+            """Fail at the new runtime read without returning partial expected wiring."""
+            if prop == 'actionstart':
+                raise Fail2BanParseError('denied')
+            return original(jail, act, prop)
+        self.value.side_effect = denied_start
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.value.reset_mock()
+        self.value.side_effect = Fail2BanParseError('chain unreadable')
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.assertNotIn('actionstart', [c.args[2] for c in self.value.call_args_list])
+        self.ipt.assert_not_called()
+        self.nft.assert_not_called()
+
+    def test_start_change_invalidates_otherwise_stable_firewall_evidence(self):
+        """Queried raw start participates even when whitespace preserves its descriptor."""
+        self.properties = {'packet-action': {**IPT, 'chain': '<known/chain>', 'actionstart': ACTIONSTART}}
+        def change_start(actions):
+            """Change only start text after live evidence acquisition."""
+            self.properties['packet-action']['actionstart'] = ACTIONSTART.replace('\n', '\n  ')
+            return self.ipt.return_value
+        self.ipt.side_effect = change_start
+        row = self.row()
+        self.assertEqual((row.outcome, row.reason), ('changed-during-check', 'action-changed'))
+
+    def test_real_readers_deduplicate_by_reviewed_scope(self):
+        """Integration fans out once; reviewed readers issue one command per scope."""
+        self.stack.close()
+        actions = {'one': NFT, 'two': NFT, 'three': IPT, 'four': UFW}
+        def properties(jail, action, prop):
+            return actions[action][prop]
+        denied = CommandResult(1, '', 'must not retain', CommandFailure.NONZERO_EXIT)
+        with patch.object(enforcement.f2b, 'get_jail_list', return_value=['guard']), \
+                patch.object(enforcement.f2b, 'get_jail_core_status', return_value=status((IP, '192.0.2.2', '2001:db8::1'))), \
+                patch.object(enforcement.f2b, 'get_jail_actions', return_value=tuple(actions)), \
+                patch.object(enforcement.f2b, 'get_action_properties', side_effect=lambda jail, action: tuple(actions[action])), \
+                patch.object(enforcement.f2b, 'get_action_property', side_effect=properties), \
+                patch.object(enforcement.host, 'get_fail2ban_namespace', return_value=SAME), \
+                patch.object(nft, 'run_host_command', return_value=denied) as nr, \
+                patch.object(ipt, 'run_host_command', return_value=denied) as ir, \
+                patch.object(ufw, 'run_host_command', return_value=denied) as ur:
+            result = enforcement.check_enforcement()
+        self.assertEqual(len(result.rows), 12)
+        self.assertEqual(nr.call_count, 1)
+        self.assertEqual(ir.call_count, 2)
+        self.assertEqual(ur.call_count, 4)
+        self.assertNotIn('must not retain', repr(result))
+
+    def test_opening_list_and_unsafe_jail_fail_without_raw_diagnostics(self):
+        """Unreadable or unsafe opening state authorizes no privileged selectors."""
+        self.list.side_effect = Fail2BanParseError('private')
+        result = enforcement.check_enforcement()
+        self.assertEqual((result.rows, result.reason), ((), 'jail-list-unavailable'))
+        self.list.side_effect = None
+        self.list.return_value = ['unsafe jail']
+        self.assertEqual(self.row().outcome, 'unverifiable')
+        self.core.assert_not_called()
+        self.nft.assert_not_called()

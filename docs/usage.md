@@ -44,7 +44,7 @@ Press `? Help` from any Offenders product screen, including the focused dashboar
 filter. The key is reserved for Help rather than inserted into the filter.
 The first section, **Current screen**, lists that screen's controls and explains
 what its data means. Below it, one concise mini-manual covers the dashboard,
-investigation, Export, GeoIP, Registration/RDNS, Coverage and validation, current
+investigation, Export, GeoIP, Registration/RDNS, Coverage, validation and Enforcement, current
 CLI commands, safety distinctions, installed version and project links.
 
 Use arrow keys, PageUp/PageDown or Home/End to scroll; `Esc/q` returns to the exact
@@ -93,6 +93,9 @@ contexts rather than promising every app binding on every modal.
 | Dashboard | `f` | Focus filter; Enter keeps query and returns to table; Esc clears and returns |
 | Dashboard | `v` | Cycle IP / ASN / Country summary |
 | Dashboard | `a` | Open one Coverage analysis snapshot |
+| Dashboard | `n` | Open one manual Enforcement check |
+| Enforcement | `r` | Recheck when idle; clear previous evidence before acquisition |
+| Enforcement | Esc / `q` | Close and reject late results |
 | Dashboard | `g` | Open GeoIP diagnostics |
 | Dashboard tables; jail/IP detail tables | `c` / `x` | Copy focused row (tab-separated) or cell, according to cursor mode |
 | Dashboard tables; jail/IP detail tables | `t` | Toggle focused table row/cell cursor mode |
@@ -163,6 +166,57 @@ return `not-global` without network traffic. Other outcomes are `success`,
 `rate-limited`, `invalid-response`, `rdap-unavailable`, or `unexpected-failure`.
 The library reports transport timeouts and other network failures together as
 `rdap-unavailable`. Neither registration nor PTR data is a reputation assessment.
+
+## Manual Enforcement verification
+
+Press `n Enforcement` on the dashboard. Opening runs one fresh read-only check,
+independently of the report's period, filter and historical logs. The summary
+counts outcomes; the table retains each supported **jail / IP / runtime action /
+backend** fact, and selection shows bounded reasons and sibling action names.
+Two supported actions can disagree; both rows remain visible.
+
+Offenders reads current banned IPs and allowlisted runtime action properties.
+For supported actions, it proves that Fail2Ban and Offenders share a network
+namespace, acquires scoped firewall views once per backend/object, then rereads
+relevant bans, actions and daemon/namespace identity. Confirmation requires a
+stable readable bracket and directly observed backend evidence. Unsupported
+actions also receive a closing ban/action comparison, with no firewall read or
+namespace requirement. Unrelated jail-list changes do not invalidate a stable
+jail. Empty jails have one opening-only factual row and require no action or
+firewall inspection.
+
+| Outcome | Meaning |
+| --- | --- |
+| `confirmed` | The stable current ban's expected supported enforcement entry was directly observed |
+| `missing` | A stable, readable comparison directly established a required fact was absent |
+| `unverifiable` | Permissions, missing tools, malformed/limited output, action metadata or namespace uncertainty prevent verification |
+| `unsupported-action` | Stable, fully readable opening/closing state found no supported action for this banned IP |
+| `changed-during-check` | Readable relevant membership, actions, daemon PID or namespace changed during the bracket |
+| `no-current-bans` | Jail-level opening snapshot has nothing to verify; no missing object is inferred |
+
+The initial catalog covers only stock-compatible **effective runtime shapes**
+for native nftables, iptables compatibility and UFW; an action name, installed
+package or on-disk default does not select a backend. Unclassified or unreadable
+sibling actions appear in detail without erasing an independently supported row.
+Unknown/custom actions are outside the catalog, not proof of a Fail2Ban error.
+UFW needs active status, exact managed-rule identity and qualified live rule
+evidence. Its detail separates managed/live booleans; optional connection
+termination remains `not-verified` when requested.
+
+**Direct rule/object observation is not packet or reachability proof.** There is
+no global firewall-OK verdict. Permission, parse or namespace failure never means
+`missing`; a readable concurrent change outranks direct confirmed/missing
+evidence. Namespace mismatch/unavailability executes no firewall command.
+
+Press `r Recheck` when idle. Requests while running are ignored. Old rows and
+detail are cleared before new acquisition; a failed recheck displays unavailable
+state, preserving no old evidence as current. `Esc/q` closes and cancels screen
+workers, rejecting late delivery; an already-running bounded read may finish.
+The shared footer shows `Checking enforcement…`; global `? Help` remains available.
+There is no timer, enforcement CLI command, persistence or firewall/Fail2Ban
+mutation. Ordinary dashboard refresh and CSV Export never acquire or contain
+Enforcement results. See [permissions](installation.md#optional-enforcement-read-permissions)
+and [troubleshooting](troubleshooting.md#enforcement-outcomes).
 
 ## CSV export
 

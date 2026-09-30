@@ -191,8 +191,10 @@ ACTION_BASE_PROPERTIES = frozenset({
     "chain_type", "chain_hook", "addr_set", "blocktype", "iptables", "lockingopt",
     "add", "destination", "application", "comment", "kill-mode", "kill",
 })
-# Only these stock properties require conditional IPv6 reads.
+# actionstart is raw read/fingerprint evidence only, never a static reference.
+# Only the listed stock properties require conditional IPv6 reads.
 ACTION_PROPERTIES = ACTION_BASE_PROPERTIES | frozenset({
+    "actionstart",
     "addr_set?family=inet6", "blocktype?family=inet6", "iptables?family=inet6",
 })
 
