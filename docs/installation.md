@@ -147,17 +147,6 @@ Report exports are separate user-created files (default `~/offenders-exports/`,
 or a custom `--output-dir`) and are not removed by either `pipx uninstall` or
 the XDG cleanup above.
 
-### Migrating from a standalone installation
-
-Migration is additive. Record the old executable path and preserve its files and
-Python environment for rollback. Use `command -v offenders` (and Bash's
-`type -a offenders`) before and after installation to detect command shadowing.
-Check the executable location reported by pipx; deliberately select it through
-PATH or its full path when ready to verify `offenders geoip status` and launch.
-Keep the same user/XDG environment to retain GeoIP data and policy. Rollback
-means restoring the old command resolution and environment; retain the old
-installation until the replacement is verified.
-
 ### Source and advanced installs
 
 From a checkout, with `python3-venv` available:
