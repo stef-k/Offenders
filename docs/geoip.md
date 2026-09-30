@@ -17,7 +17,7 @@ offenders geoip auto on         # persist opt-in for future launches
 offenders geoip auto off        # persist disabled policy (the default)
 ```
 
-Status, local reads, imports, and lookups never download. Manual update performs
+Status and local lookups never download. Manual update performs
 network access and writes user-owned data. Automatic policy is off by default;
 changing it persists local state. The normal 30-second report refresh never
 checks for GeoIP updates. Use `offenders --help` for CLI discovery.
