@@ -131,8 +131,21 @@ pipx uninstall offenders
 ```
 
 pipx isolates Python dependencies; it does not install Fail2Ban or host tools or
-grant log/sudo permissions. Installation downloads no GeoIP data. Uninstalling
-the package does not delete user-owned XDG GeoIP data.
+grant log/sudo permissions. Installation downloads no GeoIP data.
+
+Uninstalling Offenders does not remove its app-managed data under
+`$XDG_DATA_HOME/offenders` (or `~/.local/share/offenders` when
+`XDG_DATA_HOME` is unset). Delete that directory separately if you also want to
+remove retained GeoIP databases and update state:
+
+```bash
+# Optional: remove Offenders app-managed XDG data and state
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/offenders"
+```
+
+Report exports are separate user-created files (default `~/offenders-exports/`,
+or a custom `--output-dir`) and are not removed by either `pipx uninstall` or
+the XDG cleanup above.
 
 ### Migrating from a standalone installation
 
