@@ -4,6 +4,8 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-01
+
 - Explain static Fail2Ban configuration permission limits in Coverage without raw
   exception text, and distinguish unevaluated filter relevance on early-suppressed
   decisions from evaluated results.
