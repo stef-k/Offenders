@@ -260,10 +260,13 @@ class HelpContentTests(unittest.TestCase):
                          "ban-events.csv", "~/offenders-exports/", "captured when Export was opened",
                          "no new report acquisition", "Unmapped", "Unavailable != zero/empty",
                          "non-global Registration skips network", "disabled and copy-only",
-                         "offenders export [--period PERIOD] [--output-dir PATH]", "offenders geoip status",
-                         "offenders geoip update", "offenders geoip auto on|off", "never bans/unbans",
+                         "offenders --help", "offenders --version", "never bans/unbans",
                          "last successful snapshot", "default: " + DEFAULT_PERIOD, ", ".join(PERIODS)):
             self.assertIn(fragment, guide)
+        command_line = guide.split("Command line\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(len(command_line.splitlines()), 1)
+        self.assertNotIn("offenders export", command_line)
+        self.assertNotIn("offenders geoip", command_line)
 
     def test_metadata_values_and_failure_fallback_are_bounded_and_local(self):
         """Use installed metadata literally, with no assumed release number."""
@@ -274,13 +277,16 @@ class HelpContentTests(unittest.TestCase):
         package["Version"] = "9.8.7+test"
         for label in PROJECT_URLS:
             package["Project-URL"] = f"{label}, https://example.test/[bold]/{label}"
-        with patch("offenders_help_content.metadata.metadata", return_value=package):
+        with patch("offenders_help_content.metadata.metadata", return_value=package), \
+                patch("offenders_help_content.metadata.version", return_value=package["Version"]):
             text = project_information()
         self.assertIn("Version: 9.8.7+test", text)
         for label in PROJECT_URLS:
             self.assertIn(f"{label}: https://example.test/[bold]/{label}", text)
         for error in (PackageNotFoundError("offenders"), OSError("unreadable"), ValueError("invalid")):
-            with self.subTest(error=error), patch("offenders_help_content.metadata.metadata", side_effect=error):
+            with self.subTest(error=error), \
+                    patch("offenders_help_content.metadata.metadata", side_effect=error), \
+                    patch("offenders_help_content.metadata.version", side_effect=error):
                 text = project_information()
                 self.assertIn("Unavailable (source development)", text)
                 for url in PROJECT_URLS.values():

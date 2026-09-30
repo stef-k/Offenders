@@ -44,6 +44,10 @@ pipx install offenders
 offenders
 ```
 
+Run `offenders --help` (or `-h`) to discover commands and their option help;
+`offenders --version` (or `-V`) reports the installed version. These standalone
+forms exit without launching the TUI or acquiring data.
+
 GeoIP enrichment is optional. Installation downloads no databases; an explicit
 update fetches DB-IP Lite, and automatic updates require opt-in. See the
 [GeoIP guide](https://stef-k.github.io/Offenders/geoip.html) for lifecycle and attribution.

@@ -18,7 +18,7 @@ from textual.widgets import DataTable, Header, Input, Static
 from offenders_selection import current_row_key, event_row_key
 from offenders_activity import ActivityWorkers, OffendersFooter
 from offenders_help import HelpScreen, context_text, help_context
-from offenders_help_content import HELP_BINDING, project_information
+from offenders_help_content import HELP_BINDING, installed_version, project_information
 from offenders_export_ui import ExportScreen
 from offenders_enforcement_ui import EnforcementScreen
 from offenders_filter import filter_rows
@@ -543,20 +543,41 @@ class OffendersApp(App):
             last_bans.add_row("", "", "", "(no filter matches)" if rows.query else "(no ban lines in selected period)")
 
 
+# Static CLI discovery; each subcommand parser owns its detailed options.
+CLI_HELP = """Usage:
+  offenders                   Open the TUI
+  offenders export [OPTIONS]
+  offenders geoip COMMAND
+  offenders --help | -h
+  offenders --version | -V
+
+Commands:
+  export    Build one fresh report and export CSV
+  geoip     Inspect/update local GeoIP data
+
+Run 'offenders export --help' or 'offenders geoip --help' for command options."""
+
+
 def main(argv=None):
-    """Keep the dashboard default and dispatch explicit headless commands."""
+    """Keep bare TUI launch, local singleton discovery, and explicit dispatch."""
     args = sys.argv[1:] if argv is None else argv
-    if args:
-        if args[0] == "export":
-            from offenders_export_cli import main as export_main
-            return export_main(args[1:])
+    if not args:
+        OffendersApp().run()
+        return 0
+    if len(args) == 1 and args[0] in ("--help", "-h"):
+        print(CLI_HELP)
+        return 0
+    if len(args) == 1 and args[0] in ("--version", "-V"):
+        print(f"offenders {installed_version() or '(source development)'}")
+        return 0
+    if args[0] == "export":
+        from offenders_export_cli import main as export_main
+        return export_main(args[1:])
+    if args[0] == "geoip":
         from offenders_geoip_cli import main as geoip_main
-        if args[0] == "geoip":
-            return geoip_main(args[1:])
-        print("Usage: offenders [export [--period PERIOD] [--output-dir DIR] | geoip {status,update,auto on|off}]", file=sys.stderr)
-        return 2
-    OffendersApp().run()
-    return 0
+        return geoip_main(args[1:])
+    print("Usage: offenders [export ... | geoip ... | --help | -h | --version | -V]", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

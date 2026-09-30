@@ -634,9 +634,10 @@ binding chains exclude the app. Help's modal boundary blocks ordinary inherited
 product actions; the app refuses recursive Help. Keep these precedence tests green
 on Textual upgrades rather than adding framework-wide event interception.
 
-`offenders_help_content.py` holds the single mini-manual and metadata helper.
-Periods/default come from the report module. At app construction, installed
-`importlib.metadata` Version and Project-URL fields are read once and cached;
+`offenders_help_content.py` holds the single mini-manual and the shared
+`installed_version()` authority for CLI/TUI version reporting. Periods/default
+come from the report module. At app construction, installed `importlib.metadata`
+version and Project-URL fields are read and cached;
 opening Help does not read files. Missing/unreadable metadata uses a bounded
 source-development version label and durable local URL fallbacks. Metadata and
 all guide content render as literal `Static(markup=False)` text, without Markdown,

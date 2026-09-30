@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add top-level `--help`/`-h` CLI discovery and `--version`/`-V` installed-version
+  reporting without acquisition; share the TUI version authority and point TUI
+  command guidance to CLI help (#108).
+
 - Add manual `n Enforcement` verification for stock-compatible runtime nftables,
   iptables and UFW actions, with namespace-gated, batched read-only evidence and
   race-safe before/after checks. Preserve separate action/IP outcomes, idle-only
