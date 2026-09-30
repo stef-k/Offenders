@@ -240,7 +240,8 @@ class RecommendationsScreen(ModalScreen):
         self.refresh_bindings()
 
     @on(DataTable.RowHighlighted, "#coverage-findings")
-    def highlight_finding(self, event: DataTable.RowHighlighted) -> None:
+    @on(DataTable.CellHighlighted, "#coverage-findings")
+    def highlight_finding(self, event: DataTable.RowHighlighted | DataTable.CellHighlighted) -> None:
         """Use stable row identity, never parse formatted cells back into policy."""
         key = event_row_key(event)
         if key is not None and not self._delivery_closed:

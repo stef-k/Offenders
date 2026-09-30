@@ -259,9 +259,6 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         group = patterns.groups[0]
         mixed = build_findings(replace(patterns, groups=(replace(group, signature='z'),
             replace(group, signature='a', event_count=1), replace(group, family='dovecot', signature='b'))), coverage)
-        suppressed = build_findings(*fixture(count=1))
-        empty = replace(suppressed, decisions=(), pattern_inventory=replace(
-            suppressed.pattern_inventory, groups=()))
         with patch('offenders.build_report', return_value=report()) as build, \
              patch('offenders_geoip_ui.read_state', return_value={}), \
              patch.object(ui, 'run_analysis', return_value=mixed) as run:
@@ -301,7 +298,24 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
                     await pilot.press('c', 't', 'x')
                     self.assertEqual(copy.call_count, 2)
                     self.assertEqual(table.cursor_type, 'cell')
+                await pilot.press('up')
+                self.assertIn(mixed.decisions[1].reason,
+                              str(screen.query_one('#coverage-detail', Static).content))
+                self.assertNotIn('v', screen.active_bindings)
+                self.assertNotIn('v', {key.key for key in screen.query('FooterKey')})
                 await pilot.press('q')
+
+    async def test_candidate_routes_and_no_recommendation_rows(self):
+        """Existing candidate classes keep their routes; empty headlines retain context."""
+        suppressed = build_findings(*fixture(count=1))
+        empty = replace(suppressed, decisions=(), pattern_inventory=replace(
+            suppressed.pattern_inventory, groups=()))
+        with patch('offenders.build_report', return_value=report()), \
+             patch('offenders_geoip_ui.read_state', return_value={}), \
+             patch.object(ui, 'run_analysis') as run:
+            app = OffendersApp()
+            async with app.run_test(size=(120, 50)) as pilot:
+                await app.workers.wait_for_complete()
                 for options, target in (({'disabled': (('spare', 'sshd'),)}, ui.ValidationScreen),
                                         ({'running': (('live', 'sshd'),), 'count': 20}, ui.ValidationScreen),
                                         ({}, ui.CustomCandidateScreen)):
