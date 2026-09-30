@@ -631,8 +631,10 @@ selected-IP lookups are dashboard-only; report Refresh/Period also admit Jail
 Detail and IP Inspector. Generic copy/cursor controls require product-table focus;
 copy reuses the handler's selection and dashboard identity guards. Local screen
 bindings retain precedence and their existing conditional checks. Native focus
-changes refresh bindings; do not add periodic visibility refresh or a second
-binding/footer/palette registry. Framework commands remain Textual-owned.
+changes refresh bindings. Focused table highlights and explicit empty/replaced
+detail results refresh copy availability where Textual emits no focus change;
+do not add periodic visibility refresh or a second binding/footer/palette
+registry. Framework commands remain Textual-owned.
 
 `offenders_help.py` owns a single opaque full-screen `HelpScreen` modal. The
 app-level `action_help` admits only the explicit product-screen contexts; Help

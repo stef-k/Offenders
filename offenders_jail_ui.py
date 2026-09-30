@@ -113,6 +113,7 @@ class JailDetailScreen(Screen[None]):
         if table.row_count:
             table.move_cursor(row=max(0, min(cursor.row, table.row_count - 1)), scroll=False)
         table.scroll_to(x=scroll_x, y=scroll_y, animate=False, force=True)
+        self.refresh_bindings()
 
     @on(DataTable.RowSelected, "#jail-history")
     @on(DataTable.CellSelected, "#jail-history")

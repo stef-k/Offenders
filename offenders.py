@@ -225,6 +225,13 @@ class OffendersApp(App):
             return action == "toggle_cursor" or self._copyable_selection(table)
         return super().check_action(action, parameters)
 
+    @on(DataTable.RowHighlighted)
+    @on(DataTable.CellHighlighted)
+    def refresh_table_bindings(self, event: DataTable.RowHighlighted | DataTable.CellHighlighted) -> None:
+        """Refresh copy availability when the focused table's selection changes."""
+        if event.data_table is self.focused:
+            self.screen.refresh_bindings()
+
     def action_help(self) -> None:
         """Push a local guide while preserving the exact underlying screen."""
         context = help_context(self)
