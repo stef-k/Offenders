@@ -43,6 +43,7 @@ class FindingDecision:
     The exact group owns canonical identity and all measured pattern facts.
     Coverage targets retain every contributing classification and alias evidence.
     Candidate classes are review facts, never instructions to change a jail.
+    relevance_evaluated records whether filter relevance policy ran after gating.
     """
 
     classification: str
@@ -53,6 +54,7 @@ class FindingDecision:
     coverage_targets: tuple[CoverageTarget, ...]
     reason: str
     limitations: tuple[str, ...]
+    relevance_evaluated: bool
 
 
 @dataclass(frozen=True)
@@ -203,10 +205,12 @@ def _decision(group, patterns, coverage):
     if patterns.evidence_snapshot.truncated:
         notes.append("evidence/history was truncated")
     outcome = _gate(group, analyses, states, targets)
+    relevance_evaluated = outcome is None
     running, disabled = (), ()
-    if outcome is None:
+    if relevance_evaluated:
         outcome, running, disabled = _policy(group, targets, coverage, notes)
-    return FindingDecision(outcome[0], group, states, running, disabled, targets, outcome[1], _bounded(notes))
+    return FindingDecision(outcome[0], group, states, running, disabled, targets, outcome[1], _bounded(notes),
+                           relevance_evaluated=relevance_evaluated)
 
 
 def build_findings(pattern_inventory: PatternInventory, coverage_inventory: CoverageInventory) -> FindingInventory:

@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Explain static Fail2Ban configuration permission limits in Coverage without raw
+  exception text, and distinguish unevaluated filter relevance on early-suppressed
+  decisions from evaluated results.
+
 - Make native footer actions and keyboard routing contextual; retain report
   Refresh/Period on jail/IP views, gate generic Copy/Row-Cell by table focus and
   selection, preserve local controls, and reconcile contextual Help (#123).

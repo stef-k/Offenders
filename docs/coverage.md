@@ -17,6 +17,8 @@ unavailable** for the requested window. Closing/reopening starts a fresh default
 refresh never runs Coverage. Analysis is independent of report health and may be partial
 or unavailable because listeners, owners, journals, configuration, or logs cannot
 be read. Read the source limitations alongside every result.
+Static configuration permission failures identify what the current user cannot
+read and explain that Coverage results may be incomplete.
 
 Host bindings do **not** establish Internet reachability. Source coverage does
 not establish maliciousness, filter suitability, or that a ban should already
@@ -37,6 +39,8 @@ current coverage, retained examples and limitations without further acquisition.
 **Suppressed / not a recommendation** rows explain below-threshold activity,
 non-global-only IPs, inactive services, compatible enabled coverage below tuning
 thresholds, or insufficient evidence. They remain explanations, not recommendations.
+When a decision is suppressed before filter relevance policy runs, its detail
+marks running-jail and disabled-candidate relevance as **not evaluated**.
 **No recommendation** is a normal headline when there are no candidates; suppressed
 rows remain inspectable. A genuinely empty decision table retains source-analysis
 context. **Analysis unavailable** instead indicates workflow failure.

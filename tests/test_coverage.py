@@ -1,5 +1,6 @@
 """Synthetic runtime/config coverage contracts; never access a daemon or host logs."""
 from dataclasses import replace
+import errno
 from pathlib import Path
 import tempfile
 import unittest
@@ -132,9 +133,37 @@ class ConfigTests(unittest.TestCase):
             covered = discover_coverage(snapshot(source("/a")), config_root=self.root)
         self.assertEqual(covered.targets[0].classification, "covered_enabled")
         self.assertTrue(covered.targets[0].limitations)
-        with patch("offenders_coverage.os.open", side_effect=PermissionError("denied")):
-            result = discover_static(self.root)
-        self.assertTrue(any("denied" in error for error in result.limitations))
+
+    def test_permission_failures_use_product_language_and_keep_coverage_conservative(self):
+        """Denied root, enumeration and file reads retain uncertainty without errno text."""
+        self.write("jail.conf", "[custom]\nenabled=false\nfilter=custom\nlogpath=/a\n")
+        self.write("filter.d/custom.conf", "[Definition]\n")
+        cases = (("pathlib.Path.resolve", self.root),
+                 ("offenders_coverage.os.scandir", self.root),
+                 ("offenders_coverage.os.open", self.root / "jail.conf"))
+        for boundary, path in cases:
+            denied = PermissionError(errno.EACCES, "Permission denied", str(path))
+            with self.subTest(boundary=boundary), patch(boundary, side_effect=denied), \
+                    patch("offenders_coverage.get_jail_list", return_value=[]):
+                result = discover_coverage(snapshot(source("/a")), config_root=self.root)
+            text = "\n".join(result.static.limitations)
+            self.assertIn("Static Fail2Ban configuration unavailable", text)
+            self.assertIn(f"the current user cannot read {path}", text)
+            self.assertIn("Coverage results may be incomplete.", text)
+            self.assertNotIn("[Errno", text)
+            self.assertNotIn("PermissionError", text)
+            self.assertNotIn("Permission denied:", text)
+            self.assertFalse(result.static.jail_reads_complete)
+            self.assertEqual(result.targets[0].classification, "insufficient_evidence")
+            self.assertFalse(result.targets[0].disabled_definitions)
+            runtime = JailSources("live", ("/a",), None, ())
+            with patch(boundary, side_effect=denied), \
+                    patch("offenders_coverage.get_jail_list", return_value=["live"]), \
+                    patch("offenders_coverage.get_jail_sources", return_value=runtime):
+                covered = discover_coverage(snapshot(source("/a")), config_root=self.root)
+            self.assertEqual(covered.targets[0].classification, "covered_enabled")
+            self.assertEqual(covered.targets[0].running_jails, ("live",))
+            self.assertIn("Coverage results may be incomplete.", "\n".join(covered.targets[0].limitations))
 
     def test_symlinks_are_confined_and_configured_identity_is_retained(self):
         self.write("target", "[custom]\nenabled=false\n")
