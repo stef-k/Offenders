@@ -4,7 +4,7 @@ from threading import Event
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, Footer, Static
 
 from offenders import OffendersApp
 from offenders_activity import OffendersFooter
@@ -60,6 +60,9 @@ class EnforcementScreenTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(table.row_count, 0)
                 self.assertEqual(screen.rows, {})
                 self.assertIsNone(screen.result)
+                await pilot.pause()
+                self.assertNotIn('copy_selection', {getattr(key, 'action', '')
+                                                    for key in screen.query_one(Footer).children})
                 screen.highlight_row(old_event)
                 self.assertEqual(str(screen.query_one('#enforcement-detail', Static).content), '')
                 await pilot.press('r', 'r', 'n')

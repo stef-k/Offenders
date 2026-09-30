@@ -96,9 +96,11 @@ class HelpNavigationTests(unittest.IsolatedAsyncioTestCase):
                 await app.workers.wait_for_complete()
                 cases = (
                     (JailDetailScreen("sshd", report(), app._push_ip), "Jail detail",
-                     ("expand_history", "enter", "dismiss"), "without reacquiring"),
+                     ("refresh", "period", "expand_history", "copy_selection", "toggle_cursor", "enter", "dismiss"),
+                     "without reacquiring"),
                     (IPInspectorScreen("8.8.8.8", report(), app._push_jail), "IP inspector",
-                     ("registration", "rdns", "enter", "dismiss"), "separate network"),
+                     ("refresh", "period", "registration", "rdns", "copy_selection", "toggle_cursor", "enter", "dismiss"),
+                     "separate network"),
                     (ExportScreen(report()), "Export", ("export", "copy_path", "close"), "captured"),
                     (GeoIPScreen(app.geoip_status), "GeoIP diagnostics",
                      ("update_now", "toggle_auto", "dismiss"), "before activation"),
@@ -109,7 +111,7 @@ class HelpNavigationTests(unittest.IsolatedAsyncioTestCase):
                     (RecommendationsScreen(), "Coverage / Recommendations",
                      ("coverage_period", "validate", "app.copy_selection", "app.toggle_cursor", "close"), "do not prove"),
                     (ValidationScreen(inv, inv.findings[0]), "Existing-filter validation",
-                     ("validate", "enter", "close"), "does not enable/reload/change"),
+                     ("validate", "copy_selection", "toggle_cursor", "enter", "close"), "does not enable/reload/change"),
                     (CustomCandidateScreen(custom, custom.findings[0]), "Custom candidate",
                      ("generate", "copy_candidate", "close"), "disabled/copy-only"),
                 )
@@ -131,7 +133,7 @@ class HelpNavigationTests(unittest.IsolatedAsyncioTestCase):
                             self.assertIn(semantics, text)
                             rows = [line for line in text.splitlines() if line.startswith("  ")]
                             self.assertEqual(len(rows), len(actions))
-                            bindings = tuple(Binding.make_bindings(screen.BINDINGS))
+                            bindings = tuple(Binding.make_bindings([*screen.BINDINGS, *app.BINDINGS]))
                             for row, action in zip(rows, actions):
                                 if action == "enter":
                                     self.assertTrue(row.startswith("  Enter  "))
@@ -249,6 +251,25 @@ class HelpContentTests(unittest.TestCase):
         self.assertIn("z  Write bundle", text)
         self.assertIn("k  Retain path (available after successful export", text)
         self.assertIn("Esc/q  Return", text)
+
+    def test_inherited_report_controls_and_local_keys_use_runtime_authority(self):
+        """Inherited Help labels follow app bindings while local keys retain ownership."""
+        from offenders_help import CONTEXTS, context_text
+        from offenders_ip_ui import IPInspectorScreen
+        text = context_text(CONTEXTS[IPInspectorScreen], IPInspectorScreen.BINDINGS, [
+            ("z", "refresh", "Reload report"), ("s", "period", "History window"),
+            ("w", "registration", "Dashboard registration"),
+            ("d", "rdns", "Dashboard PTR"),
+            ("c", "copy_selection", "Copy"), ("x", "copy_selection", "Copy"),
+            ("t", "toggle_cursor", "Row/Cell"),
+        ])
+        self.assertIn("z  Reload report", text)
+        self.assertIn("s  History window", text)
+        self.assertIn("w  Registration", text)
+        self.assertNotIn("Dashboard registration", text)
+        self.assertNotIn("Dashboard PTR", text)
+        self.assertIn("c/x  Copy (when a table is focused with a valid selection)", text)
+        self.assertIn("Enter  Open selected listed jail", text)
 
     def test_complete_guide_and_period_authority(self):
         """Guide covers shipped features, CLI commands and key distinctions."""

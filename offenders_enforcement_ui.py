@@ -78,6 +78,7 @@ class EnforcementScreen(Screen):
         self.query_one(DataTable).clear()
         self.query_one('#enforcement-detail', Static).update('')
         self.query_one('#enforcement-summary', Static).update('Enforcement\nChecking…')
+        self.refresh_bindings()
         self._worker = self._check()
 
     @work(thread=True, name='activity:Checking enforcement…')

@@ -210,19 +210,35 @@ class OffendersApp(App):
         table.focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        """Limit global Help to product screens, excluding recursive Help."""
+        """Share context availability across native bindings and action invocation."""
         if action == "help":
             return help_context(self) is not None
-        if action == "enforcement":
+        if action in ("quit", "filter", "view", "coverage", "enforcement", "export", "geoip",
+                      "registration", "rdns"):
             return self.screen is self.default_screen
+        if action in ("refresh", "period"):
+            return self.screen is self.default_screen or isinstance(self.screen, (JailDetailScreen, IPInspectorScreen))
+        if action in ("copy_selection", "toggle_cursor"):
+            table = self.focused
+            if help_context(self) is None or not isinstance(table, DataTable):
+                return False
+            return action == "toggle_cursor" or self._copyable_selection(table)
         return super().check_action(action, parameters)
+
+    @on(DataTable.RowHighlighted)
+    @on(DataTable.CellHighlighted)
+    def refresh_table_bindings(self, event: DataTable.RowHighlighted | DataTable.CellHighlighted) -> None:
+        """Refresh copy availability when the focused table's selection changes."""
+        if self.screen_stack and event.data_table is self.focused:
+            self.screen.refresh_bindings()
 
     def action_help(self) -> None:
         """Push a local guide while preserving the exact underlying screen."""
         context = help_context(self)
         if context is not None:
             source = self if self.screen is self.default_screen else self.screen
-            self.push_screen(HelpScreen(context_text(context, source.BINDINGS), self._help_project_info))
+            inherited = self.BINDINGS if source is not self else ()
+            self.push_screen(HelpScreen(context_text(context, source.BINDINGS, inherited), self._help_project_info))
 
     def action_export(self) -> None:
         """Open the committed report only from the dashboard, without acquisition."""
@@ -265,15 +281,19 @@ class OffendersApp(App):
         self.query_one("#offenders", DataTable).focus()
 
     def action_geoip(self) -> None:
-        """Open focused GeoIP health and lifecycle actions."""
-        self.push_screen(GeoIPScreen(self.geoip_status))
+        """Open GeoIP health and lifecycle actions only from the dashboard."""
+        if self.screen is self.default_screen:
+            self.push_screen(GeoIPScreen(self.geoip_status))
 
     def action_refresh(self) -> None:
         """Manual refresh shares the timer gate but reports skipped requests."""
-        self.refresh_report(manual=True)
+        if self.check_action("refresh", ()):
+            self.refresh_report(manual=True)
 
     def action_period(self) -> None:
         """Request the next fixed period without changing committed report state."""
+        if not self.check_action("period", ()):
+            return
         keys = tuple(PERIODS)
         target = keys[(keys.index(self._active_period) + 1) % len(keys)]
         self.refresh_report(manual=True, period=target)
@@ -386,6 +406,8 @@ class OffendersApp(App):
 
     def _open_ip_tool(self, tool: str) -> None:
         """Route dashboard tools to the shared bounded command view."""
+        if self.screen is not self.default_screen:
+            return
         ip = self._selected_ip()
         if ip:
             self.push_screen(CommandOutputModal(ip, tool))
@@ -424,19 +446,24 @@ class OffendersApp(App):
 
     # ---- Consolidated copy action ----
 
-    def action_copy_selection(self) -> None:
-        table = self.focused
-        if not isinstance(table, DataTable):
-            return
-
+    def _copyable_selection(self, table: DataTable) -> bool:
+        """Reuse current selection and dashboard identity guards for copy availability."""
+        if self._cursor_indexes(table) is None:
+            return False
         if table.id == "bans-per-jail":
             key = current_row_key(table)
             if self._last_report is None or key is None or key.value not in self._last_report.jail_list:
-                return
+                return False
         if table.id == "offenders" and self.summary_view.mode != "IP":
-            if not self.summary_view.copyable():
-                return
+            return self.summary_view.copyable()
         elif table.id in ("offenders", "last-bans") and self._selected_ip() is None:
+            return False
+        return True
+
+    def action_copy_selection(self) -> None:
+        """Copy only a valid focused product table row or cell."""
+        table = self.focused
+        if not self.check_action("copy_selection", ()):
             return
 
         idx = self._cursor_indexes(table)
@@ -481,8 +508,9 @@ class OffendersApp(App):
                 table.cursor_type = old
 
     def action_toggle_cursor(self) -> None:
+        """Toggle cursor mode only for a focused product DataTable."""
         table = self.focused
-        if not isinstance(table, DataTable):
+        if not self.check_action("toggle_cursor", ()):
             return
 
         if table.cursor_type == "row":

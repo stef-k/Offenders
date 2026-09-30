@@ -4,6 +4,10 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Make native footer actions and keyboard routing contextual; retain report
+  Refresh/Period on jail/IP views, gate generic Copy/Row-Cell by table focus and
+  selection, preserve local controls, and reconcile contextual Help (#123).
+
 - Read GeoIP only from app-managed atomic `current` generations; remove flat-XDG
   and system fallback reads, and simplify database health, diagnostics and status
   JSON while preserving updater safety and publication fallback (#124).

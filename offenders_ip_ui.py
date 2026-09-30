@@ -177,6 +177,7 @@ class IPInspectorScreen(Screen[None]):
             events.move_cursor(row=max(0, min(cursor.row, events.row_count - 1)),
                                column=cursor.column, scroll=False)
         events.scroll_to(x=x, y=y, animate=False, force=True)
+        self.refresh_bindings()
 
     @on(DataTable.RowSelected, "#ip-jails")
     @on(DataTable.CellSelected, "#ip-jails")
