@@ -30,7 +30,7 @@ class HelpContext:
 
 DASHBOARD = HelpContext(
     "Dashboard", ("refresh", "period", "filter", "view", "enter", "export", "geoip",
-                  "coverage", "enforcement", "registration", "rdns", "copy_selection", "toggle_cursor"),
+                  "coverage", "enforcement", "registration", "rdns", "copy_selection", "toggle_cursor", "quit"),
     "The dashboard combines historical activity with current jail state. Reports refresh "
     "automatically; a failed refresh preserves the last successful snapshot.",
     "Open selected real IP or active jail (where applicable)",
@@ -38,16 +38,16 @@ DASHBOARD = HelpContext(
 # Enter supplements correspond to DataTable selection events, not screen bindings.
 CONTEXTS = {
     EnforcementScreen: HelpContext(
-        "Enforcement", ("recheck", "close"),
+        "Enforcement", ("recheck", "copy_selection", "toggle_cursor", "close"),
         "Opening runs one read-only check; Recheck is available when idle. Each action/IP retains "
         "its own outcome. Old evidence is cleared on recheck. Direct rule/object observation "
         "is not packet or reachability proof; this workflow never joins report refresh or CSV Export."),
     JailDetailScreen: HelpContext(
-        "Jail detail", ("expand_history", "enter", "dismiss"),
+        "Jail detail", ("refresh", "period", "expand_history", "copy_selection", "toggle_cursor", "enter", "dismiss"),
         "Live jail counters/membership and selected-period historical bans are different facts. "
         "Expanding history uses retained events without reacquiring data.", "Open selected historical IP"),
     IPInspectorScreen: HelpContext(
-        "IP inspector", ("registration", "rdns", "enter", "dismiss"),
+        "IP inspector", ("refresh", "period", "registration", "rdns", "copy_selection", "toggle_cursor", "enter", "dismiss"),
         "The inspector combines committed historical facts, current membership and local GeoIP projection. "
         "Registration/RDNS are explicit separate network actions.", "Open selected listed jail"),
     ExportScreen: HelpContext(
@@ -67,7 +67,7 @@ CONTEXTS = {
         "Validate is available only for a selected candidate. "
         "Findings do not prove maliciousness, reachability or filter suitability."),
     ValidationScreen: HelpContext(
-        "Existing-filter validation", ("validate", "enter", "close"),
+        "Existing-filter validation", ("validate", "copy_selection", "toggle_cursor", "enter", "close"),
         "Validation is bounded review evidence against retained samples. "
         "It does not enable/reload/change Fail2Ban or prove operational suitability.", "Validate selected target"),
     CustomCandidateScreen: HelpContext(
@@ -77,6 +77,8 @@ CONTEXTS = {
 }
 # Conditions describe supported actions without claiming they are executable now.
 CONDITIONS = {
+    "copy_selection": "when a table is focused with a valid selection",
+    "toggle_cursor": "when a table is focused",
     "copy_path": "available after successful export, while no export is running",
     "copy_candidate": "only when a reviewable validated result is exposed, while generation is idle",
     "copy_output": "when result output exists",
@@ -96,9 +98,12 @@ def help_context(app) -> HelpContext | None:
     return CONTEXTS.get(type(screen))
 
 
-def context_text(context: HelpContext, bindings) -> str:
-    """Group runtime aliases in curated order and annotate conditional actions."""
-    runtime = tuple(Binding.make_bindings(bindings))
+def context_text(context: HelpContext, bindings, inherited_bindings=()) -> str:
+    """Derive local and inherited controls, keeping local key ownership authoritative."""
+    runtime = list(Binding.make_bindings(bindings))
+    local_keys = {binding.key for binding in runtime}
+    runtime.extend(binding for binding in Binding.make_bindings(inherited_bindings)
+                   if binding.key not in local_keys)
     lines = [f"Current screen: {context.name}", "", "What you can do here"]
     for action in context.actions:
         if action == "enter":
@@ -108,7 +113,8 @@ def context_text(context: HelpContext, bindings) -> str:
         keys = "/".join(binding.key_display or ("Esc" if binding.key == "escape" else binding.key)
                         for binding in matches)
         description = " / ".join(dict.fromkeys(binding.description for binding in matches))
-        qualifier = f" ({CONDITIONS[action]})" if action in CONDITIONS else ""
+        condition = CONDITIONS.get(action.removeprefix("app."))
+        qualifier = f" ({condition})" if condition else ""
         lines.append(f"  {keys}  {description}{qualifier}")
     return "\n".join((*lines, "", context.prose))
 

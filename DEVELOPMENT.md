@@ -625,6 +625,15 @@ staging. Existing destination permissions are not modified.
 
 ## Contextual Help
 
+`OffendersApp.check_action()` owns inherited app-action availability for native
+Footer rendering and Textual action dispatch. Dashboard navigation, Quit and
+selected-IP lookups are dashboard-only; report Refresh/Period also admit Jail
+Detail and IP Inspector. Generic copy/cursor controls require product-table focus;
+copy reuses the handler's selection and dashboard identity guards. Local screen
+bindings retain precedence and their existing conditional checks. Native focus
+changes refresh bindings; do not add periodic visibility refresh or a second
+binding/footer/palette registry. Framework commands remain Textual-owned.
+
 `offenders_help.py` owns a single opaque full-screen `HelpScreen` modal. The
 app-level `action_help` admits only the explicit product-screen contexts; Help
 and framework screens such as Command Palette are excluded. It pushes over the
@@ -633,8 +642,8 @@ and scroll while normal background updates retain their existing ownership.
 Help has no workers or product actions and uses `OffendersFooter`.
 
 The small context catalogue curates action identities/order and short prose.
-`context_text` derives keys and descriptions from each source's runtime `BINDINGS`
-using Textual's binding normalization, grouping aliases and qualifying conditional
+`context_text` derives keys and descriptions from local and inherited runtime `BINDINGS`,
+keeping local key ownership, grouping aliases and qualifying focus- or result-dependent
 copy actions. Four explicit Enter supplements cover table-selection events on the
 dashboard, jail detail, IP inspector and validation; real keyboard navigation tests
 prove their correspondence to runtime handlers. This is not a second key map.

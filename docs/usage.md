@@ -88,8 +88,11 @@ app-lifetime update running visibly.
 ## Key and action map
 
 Keys are contextual: focused text input handles typing, and screen-local actions
-take precedence over dashboard bindings. The map below describes supported
-contexts rather than promising every app binding on every modal.
+take precedence over dashboard bindings. The native footer shows actions available
+in the active context, and keyboard invocation follows the same rules. Dashboard
+navigation and Quit stay on the dashboard; pushed screens own Back/Close.
+Refresh/Period remain available on jail/IP investigation screens. Help describes
+these supported actions, with qualifiers for focus- or result-dependent controls.
 
 | Context | Key/action | Result |
 | --- | --- | --- |
@@ -105,8 +108,8 @@ contexts rather than promising every app binding on every modal.
 | Enforcement | `r` | Recheck when idle; clear previous evidence before acquisition |
 | Enforcement | Esc / `q` | Close and reject late results |
 | Dashboard | `g` | Open GeoIP diagnostics |
-| Dashboard tables; jail/IP detail tables; Coverage table | `c` / `x` | Copy focused row (tab-separated) or cell, according to cursor mode |
-| Dashboard tables; jail/IP detail tables; Coverage table | `t` | Toggle focused table row/cell cursor mode |
+| Focused Dashboard, jail/IP detail, Coverage, Enforcement or validation table with a valid selection | `c` / `x` | Copy row (tab-separated) or cell, according to cursor mode |
+| Focused Dashboard, jail/IP detail, Coverage, Enforcement or validation table | `t` | Toggle row/cell cursor mode; no selected row required |
 | Dashboard real Top IP or Last bans row | Enter | Open IP inspector |
 | Dashboard Active bans per jail row | Enter | Open jail detail |
 | Dashboard real Top IP or Last bans row; IP inspector | `w` / `d` | Explicit Registration / RDNS for the selected/fixed IP |
@@ -127,7 +130,10 @@ contexts rather than promising every app binding on every modal.
 Aggregate rows support row/cell copying but do not represent one IP: no IP
 inspector or Registration/RDNS is available from them. Last bans remains IP-navigable.
 Copy actions use terminal clipboard support, with stdout fallback on a reported
-clipboard exception. Command-output `c` copies output, not a table selection.
+clipboard exception. Export, custom candidate and command-output screens own
+their conditional `c` Copy path/candidate/output controls. Generic table controls
+are unavailable when focus is outside a table. Framework controls and the native
+command palette retain Textual's behavior.
 
 ## Jail and IP investigation
 
