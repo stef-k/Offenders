@@ -4,6 +4,13 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+- Add manual `n Enforcement` verification for stock-compatible runtime nftables,
+  iptables and UFW actions, with namespace-gated, batched read-only evidence and
+  race-safe before/after checks. Preserve separate action/IP outcomes, idle-only
+  recheck, safe empty/stale selection, shared activity and Help; document narrow
+  read permissions and the limits of direct observation. Ordinary reports and
+  CSV exports remain independent (#83, #113).
+
 ## 0.3.1 - 2026-09-29
 
 - Harden empty, invalid and stale TUI selections and result-dependent actions;

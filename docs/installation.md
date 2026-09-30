@@ -52,6 +52,54 @@ pipx: classic `ipwhois` and `dnspython`. No separate lookup executables are need
 RDNS uses the host DNS resolver configuration; Registration needs outbound RDAP
 HTTP access. Network failures appear per request and do not disable the actions.
 
+## Optional Enforcement read permissions
+
+Dashboard `n Enforcement` performs extra runtime-action and firewall reads only
+when explicitly opened or rechecked. Missing permission affects that screen;
+ordinary reports require no firewall permission. Direct rule/object observation
+is not packet or reachability proof.
+
+An administrator can adapt the following **read-only** sudoers example on Ubuntu
+24.04 (sudo >=1.9.10). Resolve each absolute executable path with `command -v`
+on the target system first, replace `OPERATOR`, and omit unused backend/save
+entries. These anchored argument regexes constrain jail/action identifiers to
+the product's 128-character grammar and properties to its finite allowlist.
+The nft table grammar is independently bounded. Save commands use `""` to
+require **no arguments**; omitting it would permit arbitrary arguments.
+
+```sudoers
+# Fresh status and the finite runtime-action read surface.
+Cmnd_Alias OFFENDERS_ENFORCEMENT = \
+    /usr/bin/fail2ban-client status, \
+    /usr/bin/fail2ban-client ^status [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actions$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} actionproperties [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127}$, \
+    /usr/bin/fail2ban-client ^get [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} action [A-Za-z0-9_][A-Za-z0-9_.:@+-]{0,127} (actionban|name|nftables|table_family|table|chain|chain_type|chain_hook|addr_set(\?family=inet6)?|blocktype(\?family=inet6)?|iptables(\?family=inet6)?|lockingopt|add|destination|application|comment|kill-mode|kill)$, \
+    /usr/sbin/nft ^--json --numeric list table (inet|ip|ip6) [A-Za-z0-9_][A-Za-z0-9_.:+-]{0,127}$, \
+    /usr/sbin/iptables-save "", /usr/sbin/ip6tables-save "", \
+    /usr/sbin/iptables-nft-save "", /usr/sbin/ip6tables-nft-save "", \
+    /usr/sbin/iptables-legacy-save "", /usr/sbin/ip6tables-legacy-save "", \
+    /usr/sbin/ufw status, /usr/sbin/ufw show added
+OPERATOR ALL=(root) NOPASSWD: OFFENDERS_ENFORCEMENT
+```
+
+Validate the adapted file with `visudo -c -f /path/to/file` before installing it
+through `visudo`, then exercise the actual reads as the non-root operator.
+The example's argument matching was syntax-checked and exercised with a non-root
+user in disposable Ubuntu 24.04; representative systemd/Fail2Ban host acceptance
+remains a separate release gate. Do not replace these rules with unrestricted
+`fail2ban-client *`, `nft *`, `iptables *`, `ufw *`, shell or wrapper access.
+
+Only supported runtime action descriptors authorize firewall reads. Native nft
+uses `nft --json --numeric list table FAMILY TABLE`; iptables uses the matching
+bare save binary; UFW uses only `ufw status`, `ufw show added` and bare
+`iptables-save` / `ip6tables-save`. There is no fallback or mutation command.
+Namespace proof uses non-sudo
+`systemctl show --property=MainPID --value fail2ban.service` plus current-user
+reads of `/proc/self/ns/net` and `/proc/<MainPID>/ns/net`. A mismatch or unreadable
+identity prevents all firewall reads; do not grant sudo systemctl/proc access or
+add namespace switching to work around it.
+
 ## Install and upgrade
 
 Install from [PyPI](https://pypi.org/project/offenders/) using pipx:

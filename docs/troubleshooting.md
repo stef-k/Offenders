@@ -27,6 +27,29 @@ Registration/RDNS dependencies are installed with Offenders. A missing Python
 import indicates an incomplete installation: reinstall the package in its pipx
 environment. A temporary request failure does not disable either action.
 
+## Enforcement outcomes
+
+Enforcement is manual (`n` on the dashboard, then idle-only `r Recheck`). It has
+no effect on the ordinary dashboard's permission requirements or refresh health.
+Read the selected row's stable reason and backend evidence reason:
+
+| Evidence/reason | What to check |
+| --- | --- |
+| `namespace-mismatch` / `namespace-unavailable` | Non-sudo systemctl MainPID and current-user proc namespace access. No firewall command ran. Offenders does not switch namespaces or guess a fallback. |
+| `closing-namespace-unavailable` / `closing-state-unavailable` / `closing-action-unavailable` | The closing bracket could not be read sufficiently. Retry explicitly after checking daemon/runtime read access; this is not a missing rule. |
+| `non-zero-exit`, `command-not-found`, `timeout` | Resolve actual tool paths and narrowly scoped noninteractive read permissions. Command stderr is intentionally not published. |
+| Action metadata unavailable / `ambiguous-action` | Runtime properties could not establish exactly one supported family. Do not infer a backend from the action name or loosen command permissions. |
+| `unsupported-action` | Readable runtime action shapes are outside the finite catalog. A custom/notification action is not automatically harmless or broken. |
+| `changed-during-check` | Current membership, action facts or daemon/namespace identity changed. Choose Recheck when idle; no old direct evidence is labeled current. |
+| `missing` | The stable readable comparison found a specific required fact absent. Inspect that fact through normal administrator tools; Offenders performs no repair. |
+| `no-current-bans` | Nothing was banned in that jail's opening snapshot. On-demand firewall objects were not inspected or declared missing. |
+
+UFW's managed and live rule facts are independent; an installed or active UFW
+alone cannot confirm a ban. Optional connection termination is not verified.
+Parser/evidence limits remain `unverifiable`, never absence. A failed recheck
+clears previous successful rows. Direct rule/object observation is not packet or
+reachability proof, even when the selected row is `confirmed`.
+
 ## CSV export fails
 
 Check that the destination root (default `~/offenders-exports/`) is writable by

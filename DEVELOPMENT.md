@@ -34,6 +34,8 @@ explicit inventory. Neither workflow silently starts the other.
 | Report model, period selection, top-offender enrichment | `offenders_report.py` |
 | Normalized ban history from current, rotated, and gzip logs | `offenders_events.py` |
 | Bounded commands, Fail2Ban status/settings/source-query parsing | `offenders_fail2ban.py` |
+| Manual Enforcement models and bracketed backend orchestration | `offenders_enforcement.py` |
+| Enforcement screen, recheck and result presentation | `offenders_enforcement_ui.py` |
 | In-memory display filtering | `offenders_filter.py` |
 | Aggregate projections and presentation | `offenders_aggregate.py`, `offenders_summary_ui.py` |
 | Jail history and current-ban details | `offenders_jail_ui.py` |
@@ -112,7 +114,7 @@ stale-result guards still protect delivery. Cancellation releases actual activit
 does not forcibly terminate bounded backend threads or replace backend locks.
 GeoIP's app-lifetime owner continues updating after diagnostics closes.
 
-The current asynchronous audit covers all ten worker paths:
+The current asynchronous audit covers these worker paths:
 
 | Trigger | Worker / feedback |
 | --- | --- |
@@ -123,6 +125,7 @@ The current asynchronous audit covers all ten worker paths:
 | Explicit Registration / RDNS | `CommandOutputModal._run`: provider-specific working text |
 | IP mount / successful new report | `IPInspectorScreen._project`: loading details |
 | Coverage mount | `_analyze`: analyzing coverage |
+| Enforcement mount / idle recheck | `_check`: checking enforcement |
 | Selected filter validation | `_validate`: validating |
 | Custom template action | `_generate`: generating and validating |
 | ASN/Country selection / successful new report | `DashboardSummary._project`: loading summary |
@@ -133,6 +136,47 @@ one of the workers above inherits activity automatically. Duplicate report,
 GeoIP, validation, and candidate actions retain their single-flight rejection
 feedback. `tests/test_activity.py` audits runtime scheduling for unmanaged work
 and proves generic participation; existing product tests cover detailed states.
+
+## Manual Enforcement boundary
+
+`check_enforcement()` acquires a fresh snapshot through the foundation's core
+status and finite action-property APIs, independently of `Report`. Opening and
+closing use the same observation builder; fingerprints hash discovered action
+identities and exact queried allowlisted facts. Safe jail/action selectors use
+the foundation's bounded identity grammar. A jail without current bans needs no
+actions or firewall bracket. Namespace proof precedes every firewall reader.
+
+Three explicit classifiers select exactly one descriptor per action/IP family;
+ambiguity fails closed. A supported action can coexist with unclassified or
+unreadable siblings. Backend parsers/readers remain unchanged: nft table scopes,
+iptables save binaries and UFW families are deduplicated by their reviewed
+readers. UFW status and added rules are acquired once per check. Separate
+iptables and UFW reads remain separate evidence contracts even when both use
+the same save binary; there is no command cache or backend framework.
+
+Closing unreadability takes precedence over readable relevant change, which
+takes precedence over direct backend evidence. Relevant current-ban sets and
+action identities are compared independently of unrelated jail-list changes.
+Required action facts/descriptors and readable daemon/namespace identities are
+bracketed. Unreadable siblings do not erase supported action rows. Final immutable
+results retain stable reasons, bounded sibling identities and UFW managed/live
+facts, with no raw commands, dumps or diagnostic streams.
+
+The screen owns one Textual thread worker per opening/idle recheck, clears rows
+before reacquiring, and rejects cancelled/replaced/closed delivery. Generation
+and immutable row identity form table keys so queued events cannot select a new
+check's same-looking row. It uses shared selection helpers and `OffendersFooter`;
+there is no enforcement timer, CLI/export schema or persistence. Cancellation
+does not terminate a bounded host read already executing.
+
+Focused tests cover bracketing and cross-backend batching at public seams, then
+real Textual lifecycle/selection/Help controls. Package qualification is separate
+from representative systemd/Fail2Ban host acceptance. The latter requires
+independent review of the exact draft PR head first; keep #113 draft/unmerged and
+#83 open until that evidence and the parent checklist are reconciled. The
+operator sudoers example must be syntax-checked and exercised as a non-root
+user on supported Ubuntu 24.04. Disposable synthetic rule evidence does not
+prove packet blocking or qualify a representative live host.
 
 ## GeoIP lifecycle
 

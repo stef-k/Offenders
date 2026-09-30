@@ -19,6 +19,9 @@ Current Offenders dashboard using synthetic documentation data.
 - Explore rolling history periods, live jail status, and IP/ASN/Country summaries.
 - Filter loaded results and investigate individual jails and IPs.
 - Review Coverage evidence and explicitly validate copy-only filter candidates.
+- Open manual `n Enforcement` to compare fresh current bans with supported
+  nftables, iptables or UFW rule evidence; direct observation is not packet or
+  reachability proof (see [Usage](https://stef-k.github.io/Offenders/usage.html#manual-enforcement-verification)).
 
 Reports and investigation are read-only with respect to Fail2Ban configuration
 and bans. There is no ban/unban action or automatic Fail2Ban mutation. Coverage

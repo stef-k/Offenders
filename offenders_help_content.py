@@ -44,7 +44,7 @@ The shared ⏳ footer indicates accepted background work without delaying result
 
 Dashboard
 Periods: {', '.join(PERIODS)} (default: {DEFAULT_PERIOD}); finite periods are rolling windows, while all uses available history. Cycle IP / ASN / Country summaries, filter visible data, and open selected real IPs or active jails.
-Copy the selected row/cell and switch row/cell cursor mode. Dashboard controls also lead to Export, GeoIP, Coverage and explicit Registration/RDNS lookups.
+Copy the selected row/cell and switch row/cell cursor mode. Dashboard controls also lead to Export, GeoIP, Coverage, Enforcement and explicit Registration/RDNS lookups.
 
 Investigation
 Jail detail separates live counters/membership from selected-period historical bans; expanding history uses retained events without reacquiring data. Navigate jail ↔ IP through selected table rows.
@@ -66,6 +66,12 @@ Results are bounded factual lookup output, not reputation scoring.
 Coverage and validation
 Coverage is manually initiated and conservatively correlates retained evidence for review. Existing-filter validation tests selected filters against retained samples; custom candidates use fixed templates and validation, remain disabled and copy-only, and are never installed or enabled automatically.
 Findings do not prove maliciousness, safety or reachability; sample matches do not establish operational suitability.
+
+Enforcement
+{keys["enforcement"]} Enforcement explicitly checks fresh current bans against stock-compatible nftables, iptables or UFW action evidence. Opening checks once; r Recheck runs again when idle, clearing old evidence first. Esc/q closes.
+Separate action/IP outcomes: confirmed (direct entry observed), missing (direct required fact absent), unverifiable (insufficient readable evidence), unsupported-action (fully characterized outside the catalog), changed-during-check (readable relevant state changed), no-current-bans (jail-level fact).
+Namespace uncertainty prevents firewall reads. Unclassified sibling actions remain detail without erasing supported results. UFW requires active, managed and live evidence; connection termination is not verified.
+Direct rule/object observation is not packet or reachability proof. No timer, ordinary Report/CSV data, firewall changes or bans/unbans are added.
 
 Command line
 offenders
