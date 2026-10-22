@@ -37,7 +37,10 @@ support remains limited to recognized runtime shapes and fails closed.
 Fail2Ban, readable logs, and narrowly scoped noninteractive sudo permissions must
 be supplied separately; see [installation and permissions](https://stef-k.github.io/Offenders/installation.html).
 
-Install from [PyPI](https://pypi.org/project/offenders/) and run:
+Before installing or upgrading from [PyPI](https://pypi.org/project/offenders/),
+[update OS certificates and securely bootstrap pipx's shared pip](https://stef-k.github.io/Offenders/installation.html#secure-pipx-bootstrap).
+This is required for existing environments too; upgrading Offenders alone does
+not update pip's embedded CA bundle. Then run:
 
 ```bash
 pipx install offenders

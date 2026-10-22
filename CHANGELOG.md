@@ -4,6 +4,16 @@ Notable changes to Offenders are recorded here.
 
 ## Unreleased
 
+## 0.4.1 - 2026-10-23
+
+- Secure release and fresh wheel-smoke pip bootstrapping with the PSF advisory's
+  hash-pinned pip 26.2.2 wheel before dependency downloads. Use its patched CA
+  bundle for release installs and document secure pipx/source installation and
+  existing-environment recovery after the emSign incident (#132).
+- Record runtime HTTPS trust ownership and certificate failure tests. Runtime
+  dependencies and CLI behavior are unchanged; operators must update their OS
+  certificates and pip separately from upgrading Offenders.
+
 ## 0.4.0 - 2026-10-01
 
 - Explain static Fail2Ban configuration permission limits in Coverage without raw

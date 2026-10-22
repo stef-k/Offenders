@@ -117,7 +117,12 @@ Install from [PyPI](https://pypi.org/project/offenders/) using pipx:
 sudo apt-get update
 sudo apt-get install -y pipx
 pipx ensurepath
-# Open a new login shell after ensurepath, then:
+```
+
+Open a new login shell after `ensurepath`, complete the secure bootstrap below,
+then install and run:
+
+```bash
 pipx install offenders
 command -v offenders
 offenders
@@ -129,6 +134,33 @@ Upgrade or remove the package with:
 pipx upgrade offenders
 pipx uninstall offenders
 ```
+
+### Secure pipx bootstrap
+
+Before the first install or upgrade, update Ubuntu's `ca-certificates` and
+bootstrap **pip 26.2.2** in pipx's shared environment. Updating Offenders alone
+does not repair pip. The [PSF security advisory](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576)
+provides this exact wheel URL and SHA-256. Its hash protects the initial download
+even when the old pip's embedded CA bundle is stale; TLS verification stays on.
+
+```bash
+sudo apt-get update
+sudo apt-get install --only-upgrade ca-certificates
+pipx_shared=$(pipx environment --value PIPX_SHARED_LIBS)
+# Creating a missing shared venv uses only Python's bundled ensurepip.
+if [ ! -x "$pipx_shared/bin/python" ]; then
+    python3 -m venv "$pipx_shared"
+fi
+"$pipx_shared/bin/python" -I -m pip --isolated --disable-pip-version-check install --no-index --no-deps --no-cache-dir --upgrade 'https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'
+"$pipx_shared/bin/python" -m pip --version
+```
+
+Run this again if pipx recreates its shared environment. The shared pip must be
+at least 26.2.2 before ordinary dependency downloads; setting `PIP_CERT` alone is
+insufficient because pip also loads its embedded certifi roots. Keep OS trust
+current for runtime GeoIP HTTPS downloads and Registration (RDAP), which use
+Python's default OS CA store, including configured `SSL_CERT_FILE`/`SSL_CERT_DIR`.
+Offenders does not bundle pip, certifi, a Python runtime, or a CA store.
 
 pipx isolates Python dependencies; it does not install Fail2Ban or host tools or
 grant log/sudo permissions. Installation downloads no GeoIP data.
@@ -154,6 +186,7 @@ From a checkout, with `python3-venv` available:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+python -I scripts/bootstrap_pip.py
 python -m pip install -e .
 offenders
 ```
