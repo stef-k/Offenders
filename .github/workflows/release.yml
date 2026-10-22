@@ -11,9 +11,6 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      # The pinned pip uses only its patched bundle, including in build isolation.
-      # Avoid merging an unknown runner OS trust store into package downloads.
-      PIP_USE_DEPRECATED: legacy-certs
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +28,10 @@ jobs:
       - name: Bootstrap hash-pinned pip before dependency downloads
         run: python -I scripts/bootstrap_pip.py
       - name: Test and build standard distributions
+        env:
+          # Set only after bootstrapping: old ensurepip may reject this option.
+          # Use the patched bundle without merging unknown runner OS roots.
+          PIP_USE_DEPRECATED: legacy-certs
         run: |
           python -m pip install build twine
           python -m pip install .
@@ -43,7 +44,7 @@ jobs:
           smoke=$(mktemp -d)
           python -m venv "$smoke/venv"
           "$smoke/venv/bin/python" -I scripts/bootstrap_pip.py
-          "$smoke/venv/bin/python" -m pip install dist/*.whl
+          PIP_USE_DEPRECATED=legacy-certs "$smoke/venv/bin/python" -m pip install dist/*.whl
           cp tests/test_runtime.py "$smoke/"
           cd "$smoke"
           export XDG_DATA_HOME="$smoke/data"

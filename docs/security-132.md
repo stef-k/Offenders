@@ -27,14 +27,21 @@ despite the old tool's trust store. No trust bypass or unpinned self-upgrade is
 used. Subsequent release dependency downloads use patched pip's vendored certifi
 2026.10.19 exclusively (`PIP_USE_DEPRECATED=legacy-certs`); pip's normal merged
 OS/certifi mode could otherwise reintroduce stale runner roots. Revisit that
-setting when changing the pinned pip version. There is no ordinary PR CI workflow.
+setting when changing the pinned pip version. It is set only after each
+bootstrap because old ensurepip versions reject the option. There is no ordinary
+PR CI workflow.
 
 The separate publish job still consumes only the built artifacts and uses OIDC
 Trusted Publishing. The inspected upstream `pypa/gh-action-pypi-publish@release/v1`
 constraints already specify certifi **2026.10.19** and sigstore **4.5.1**; no
 local publish tooling or upload token is introduced. Its container is maintained
 upstream, so source constraints alone do not prove the contents of a cached image;
-the eventual release job is separate evidence.
+the eventual release job is separate evidence. Upstream Docker build prerequisites
+still pin pip **26.2**, whose embedded bundle is affected. That pip is used when
+upstream builds its image; the inspected publish entrypoint performs no pip or
+dependency installation. Uploads, OIDC and attestations use the patched runtime
+Requests/certifi and sigstore dependencies above. This is a retained upstream
+image-build provenance limit, not a demonstrated Offenders upload exploit.
 
 The [installation guide](installation.md#secure-pipx-bootstrap) applies the same
 hash-pinned bootstrap to pipx's shared pip before app installation or upgrade.

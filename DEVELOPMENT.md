@@ -29,9 +29,11 @@ wheel and SHA-256, with index, dependency, cache, and version-check access disab
 It then reports pip's vendored certifi and OS trust paths and checks the vendored
 bundle for the removed emSign ECC G3 root. Update OS `ca-certificates` separately
 for runtime HTTPS; `--cert` alone does not remove pip's embedded roots.
-The release build sets `PIP_USE_DEPRECATED=legacy-certs` so pip 26.2.2 uses only its
-patched bundle, including build isolation and the fresh wheel-smoke venv, rather
-than merging unknown runner OS roots. See the [HTTPS audit](docs/security-132.md).
+After bootstrapping, release installs set `PIP_USE_DEPRECATED=legacy-certs` so
+pip 26.2.2 uses only its patched bundle, including build isolation and the fresh
+wheel-smoke venv, rather than merging unknown runner OS roots. Keep that setting
+off the initial bootstrap: older ensurepip versions reject the option.
+See the [HTTPS audit](docs/security-132.md).
 
 ## Architecture overview
 
