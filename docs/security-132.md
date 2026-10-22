@@ -56,7 +56,10 @@ it does **not** update pip or the OS trust store in an existing installation.
 | GeoIP database update | `urllib.request` HTTPSHandler → Python `ssl` default context → OS CA file/directory; fixed HTTPS provider, redirects refused |
 | Registration | ipwhois **1.3.0** Net opener → `urllib.request` HTTPSHandler → the same default OS context; HTTPS ARIN bootstrap and registry redirects, zero retries |
 | RDNS | dnspython resolver using host DNS configuration; no HTTPS/certifi path |
-| Local GeoIP reads, dashboard and export | Local files/host commands; no TLS acquisition |
+| Report/CSV acquisition and local GeoIP reads | Local files/host commands; no TLS acquisition |
+
+Dashboard opt-in automatic GeoIP updates use the same HTTPS download path in the
+first row; the report's local GeoIP reads do not download data.
 
 Neither Offenders nor its runtime dependencies vendor a CA bundle or import
 certifi for these paths. The wheel contains application modules and metadata,
