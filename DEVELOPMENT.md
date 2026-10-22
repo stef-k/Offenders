@@ -10,6 +10,7 @@ The contributor baseline is Ubuntu 24.04 with Python 3.12. From a clean checkout
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
+python -I scripts/bootstrap_pip.py
 python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
@@ -21,6 +22,18 @@ installation needs access to dependencies (an index or a local cache). Ordinary
 offline development and tests need no network, live Fail2Ban, or GeoIP databases.
 Release tools such as `build`, `twine`, and `actionlint` are separate contributor
 tools, not runtime dependencies.
+
+Bootstrap every fresh venv before its first index download, including build and
+wheel-smoke environments. The bootstrap uses the PSF advisory's exact pip 26.2.2
+wheel and SHA-256, with index, dependency, cache, and version-check access disabled.
+It then reports pip's vendored certifi and OS trust paths and checks the vendored
+bundle for the removed emSign ECC G3 root. Update OS `ca-certificates` separately
+for runtime HTTPS; `--cert` alone does not remove pip's embedded roots.
+After bootstrapping, release installs set `PIP_USE_DEPRECATED=legacy-certs` so
+pip 26.2.2 uses only its patched bundle, including build isolation and the fresh
+wheel-smoke venv, rather than merging unknown runner OS roots. Keep that setting
+off the initial bootstrap: older ensurepip versions reject the option.
+See the [HTTPS audit](docs/security-132.md).
 
 ## Architecture overview
 

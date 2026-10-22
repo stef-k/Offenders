@@ -10,6 +10,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +24,14 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: python scripts/check_distribution.py --tag "$RELEASE_TAG" --tag-only
+      # Old pip trusts its embedded certifi even when OS certificates are updated.
+      - name: Bootstrap hash-pinned pip before dependency downloads
+        run: python -I scripts/bootstrap_pip.py
       - name: Test and build standard distributions
+        env:
+          # Set only after bootstrapping: old ensurepip may reject this option.
+          # Use the patched bundle without merging unknown runner OS roots.
+          PIP_USE_DEPRECATED: legacy-certs
         run: |
           python -m pip install build twine
           python -m pip install .
@@ -34,7 +43,8 @@ jobs:
         run: |
           smoke=$(mktemp -d)
           python -m venv "$smoke/venv"
-          "$smoke/venv/bin/python" -m pip install dist/*.whl
+          "$smoke/venv/bin/python" -I scripts/bootstrap_pip.py
+          PIP_USE_DEPRECATED=legacy-certs "$smoke/venv/bin/python" -m pip install dist/*.whl
           cp tests/test_runtime.py "$smoke/"
           cd "$smoke"
           export XDG_DATA_HOME="$smoke/data"
